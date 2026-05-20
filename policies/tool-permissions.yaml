@@ -1,0 +1,10 @@
+allow:
+  - read_repository
+  - generate_artifacts
+  - write_artifacts
+deny:
+  - modify_source_code
+  - create_pr
+  - merge_branch
+  - deploy
+  - close_ticket

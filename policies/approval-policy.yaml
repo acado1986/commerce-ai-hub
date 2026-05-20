@@ -1,0 +1,12 @@
+require_human_approval_for:
+  - low_confidence
+  - code_modification
+  - pr_creation
+  - merge
+  - deploy
+  - ticket_close
+default_approval_status: pending
+mvp_forbidden:
+  - merge
+  - deploy
+  - ticket_close

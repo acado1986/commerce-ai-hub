@@ -1,0 +1,10 @@
+name: architecture
+stages:
+  - requirements
+  - architecture
+outputs:
+  - requirements.md
+  - architecture.md
+  - technical-decisions.md
+  - risks.md
+  - roadmap.md

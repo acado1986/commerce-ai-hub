@@ -1,0 +1,12 @@
+name: offer
+stages:
+  - requirements
+  - architecture
+  - planning
+outputs:
+  - discovery.md
+  - solution-summary.md
+  - scope.md
+  - assumptions.md
+  - estimation.md
+  - proposal.md

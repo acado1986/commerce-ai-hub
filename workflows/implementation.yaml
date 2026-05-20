@@ -1,0 +1,14 @@
+name: implementation
+stages:
+  - requirements
+  - architecture
+  - planning
+  - qa
+  - documentation
+outputs:
+  - requirements.md
+  - architecture.md
+  - implementation-plan.md
+  - qa-plan.md
+  - review-checklist.md
+  - ticket-comment.md

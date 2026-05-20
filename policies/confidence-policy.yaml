@@ -1,0 +1,4 @@
+min_confidence: 0.7
+actions:
+  below_threshold: human_review
+  above_threshold: continue

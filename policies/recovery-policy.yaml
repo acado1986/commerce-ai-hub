@@ -1,0 +1,6 @@
+llm:
+  max_retries: 2
+  on_missing_credentials: human_review
+  on_invalid_output: human_review
+artifacts:
+  on_write_failure: human_review

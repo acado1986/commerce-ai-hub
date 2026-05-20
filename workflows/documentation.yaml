@@ -1,0 +1,8 @@
+name: documentation
+stages:
+  - documentation
+outputs:
+  - technical-documentation.md
+  - release-notes.md
+  - qa-notes.md
+  - ticket-comment.md

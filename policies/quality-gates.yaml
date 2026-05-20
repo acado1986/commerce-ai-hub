@@ -1,0 +1,16 @@
+required_artifacts:
+  - input.md
+  - intake.json
+  - classification.json
+  - requirements.md
+  - architecture.md
+  - implementation-plan.md
+  - qa-plan.md
+  - review-checklist.md
+  - ticket-comment.md
+  - audit.json
+checks:
+  - non_empty_artifacts
+  - risk_documented
+  - assumptions_documented
+  - qa_scope_defined
