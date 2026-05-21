@@ -1,0 +1,208 @@
+{
+  "name": "AI Delivery Hub - LangGraph Equivalent",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "input_text", "value": "={{$json.input_text || \"Implement a new Adobe Commerce checkout validation flow\"}}" },
+            { "name": "request_type", "value": "implementation" },
+            { "name": "risk_level", "value": "medium" },
+            { "name": "next_action", "value": "continue" }
+          ],
+          "object": [
+            {
+              "name": "model_map",
+              "value": {
+                "classify": "={{$env.AZURE_OPENAI_CLASSIFICATION_DEPLOYMENT}}",
+                "requirements": "={{$env.AZURE_OPENAI_REQUIREMENTS_DEPLOYMENT}}",
+                "architecture": "={{$env.AZURE_OPENAI_ARCHITECTURE_DEPLOYMENT}}",
+                "planning": "={{$env.AZURE_OPENAI_PLANNING_DEPLOYMENT}}",
+                "qa": "={{$env.AZURE_OPENAI_QA_DEPLOYMENT}}",
+                "documentation": "={{$env.AZURE_OPENAI_DOCUMENTATION_DEPLOYMENT}}"
+              }
+            },
+            {
+              "name": "prompt_map",
+              "value": {
+                "requirements": "Create clear functional and non-functional requirements, assumptions, constraints, and acceptance criteria.",
+                "architecture": "Produce architecture with system context, components, integrations, and risk notes.",
+                "planning": "Create implementation steps, sequencing, dependencies, rollback strategy, and review checklist.",
+                "qa": "Create QA strategy with test matrix, regression scope, and exit criteria.",
+                "documentation": "Create concise ticket update summarizing scope, artifacts, risks, and pending approvals."
+              }
+            }
+          ]
+        }
+      },
+      "id": "2",
+      "name": "Init State",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [430, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = $json.input_text;\nreturn [{json:{...$json, classify_prompt:`Classify the request. Return strict JSON with keys: request_type, platforms, confidence_score, risk_level, rationale. Allowed request_type: implementation, architecture, offer, proposal, bug_investigation, documentation, qa, research. Allowed platforms: adobe_commerce, app_builder, generic.\\n\\nInput:\\n${t}`}}];"
+      },
+      "id": "3",
+      "name": "Build Classify Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [670, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.AZURE_OPENAI_ENDPOINT + '/openai/deployments/' + $json.model_map.classify + '/chat/completions?api-version=' + ($env.AZURE_OPENAI_API_VERSION || '2024-12-01-preview')}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "api-key", "value": "={{$env.AZURE_OPENAI_API_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"messages\":[{\"role\":\"user\",\"content\":$json.classify_prompt}],\"temperature\":0.1}"
+      },
+      "id": "4",
+      "name": "LLM Classify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [930, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.choices?.[0]?.message?.content || '{}';\nlet c = {};\ntry { c = JSON.parse(raw); } catch { c = { request_type:'implementation', platforms:['generic'], confidence_score:0.0, risk_level:'medium', rationale:'parse_failed' }; }\nconst next_action = (Number(c.confidence_score || 0) < 0.7) ? 'human_review' : 'continue';\nreturn [{json:{...$json, ...c, next_action, artifacts:{}}}];"
+      },
+      "id": "5",
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1170, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{$json.next_action}}", "operation": "equal", "value2": "human_review" }
+          ]
+        }
+      },
+      "id": "6",
+      "name": "Needs Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1390, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stages = ['requirements','architecture','planning','qa','documentation'];\nreturn stages.map(stage => ({ json: { ...$json, stage, model: $json.model_map[stage], prompt: $json.prompt_map[stage] } }));"
+      },
+      "id": "7",
+      "name": "Expand Stages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1610, 420]
+    },
+    {
+      "parameters": { "batchSize": 1 },
+      "id": "8",
+      "name": "Loop Stages",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1820, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = JSON.stringify($json.artifacts || {}, null, 2);\nconst userPrompt = `You are a specialized delivery agent in a deterministic workflow. Stage: ${$json.stage}. Request type: ${$json.request_type}. Platforms: ${JSON.stringify($json.platforms || [])}. Input: ${$json.input_text}. Prior artifacts: ${context}. Instruction: ${$json.prompt}. Return markdown only.`;\nreturn [{json:{...$json, stage_prompt:userPrompt}}];"
+      },
+      "id": "9",
+      "name": "Build Stage Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2030, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.AZURE_OPENAI_ENDPOINT + '/openai/deployments/' + $json.model + '/chat/completions?api-version=' + ($env.AZURE_OPENAI_API_VERSION || '2024-12-01-preview')}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "api-key", "value": "={{$env.AZURE_OPENAI_API_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"messages\":[{\"role\":\"user\",\"content\":$json.stage_prompt}],\"temperature\":0.2}"
+      },
+      "id": "10",
+      "name": "LLM Stage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2250, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json.choices?.[0]?.message?.content || '';\nconst key = `${$json.stage}.md`;\nconst artifacts = $json.artifacts || {};\nartifacts[key] = out;\nreturn [{json:{...$json, artifacts}}];"
+      },
+      "id": "11",
+      "name": "Store Artifact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2460, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{status:'awaiting_approval', message:'Human approval required after classification', approval_stage:'classify', data:$json}}];"
+      },
+      "id": "12",
+      "name": "Approval Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1610, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{status:'completed', artifacts:$json.artifacts, request_type:$json.request_type, risk_level:$json.risk_level}}];"
+      },
+      "id": "13",
+      "name": "Done",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2670, 420]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Init State", "type": "main", "index": 0 }]] },
+    "Init State": { "main": [[{ "node": "Build Classify Prompt", "type": "main", "index": 0 }]] },
+    "Build Classify Prompt": { "main": [[{ "node": "LLM Classify", "type": "main", "index": 0 }]] },
+    "LLM Classify": { "main": [[{ "node": "Parse Classification", "type": "main", "index": 0 }]] },
+    "Parse Classification": { "main": [[{ "node": "Needs Approval?", "type": "main", "index": 0 }]] },
+    "Needs Approval?": {
+      "main": [
+        [{ "node": "Approval Output", "type": "main", "index": 0 }],
+        [{ "node": "Expand Stages", "type": "main", "index": 0 }]
+      ]
+    },
+    "Expand Stages": { "main": [[{ "node": "Loop Stages", "type": "main", "index": 0 }]] },
+    "Loop Stages": { "main": [[{ "node": "Build Stage Prompt", "type": "main", "index": 0 }], [{ "node": "Done", "type": "main", "index": 0 }]] },
+    "Build Stage Prompt": { "main": [[{ "node": "LLM Stage", "type": "main", "index": 0 }]] },
+    "LLM Stage": { "main": [[{ "node": "Store Artifact", "type": "main", "index": 0 }]] },
+    "Store Artifact": { "main": [[{ "node": "Loop Stages", "type": "main", "index": 1 }]] }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "langgraph-equivalent-v1"
+}

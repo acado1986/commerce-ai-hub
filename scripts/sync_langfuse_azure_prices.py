@@ -41,7 +41,7 @@ def _http_json(url: str, *, method: str = "GET", headers: dict[str, str] | None 
         return json.loads(response.read().decode("utf-8"))
 
 
-def _azure_prices_pages(filter_expr: str) -> list[dict[str, Any]]:
+def _azure_prices_pages(filter_expr: str, *, max_pages: int | None = None) -> list[dict[str, Any]]:
     query = urllib.parse.urlencode(
         {
             "api-version": "2023-01-01-preview",
@@ -50,10 +50,24 @@ def _azure_prices_pages(filter_expr: str) -> list[dict[str, Any]]:
     )
     url = f"{RETAIL_API}?{query}"
     items: list[dict[str, Any]] = []
+    page_number = 0
     while url:
+        page_number += 1
+        if max_pages is not None and page_number > max_pages:
+            break
         page = _http_json(url)
-        items.extend(page.get("Items") or [])
+        page_items = page.get("Items") or []
+        items.extend(page_items)
+        print(
+            f"Fetched Azure prices page {page_number}: +{len(page_items)} items (total={len(items)})",
+            flush=True,
+        )
         url = page.get("NextPageLink")
+    if max_pages is not None and url:
+        print(
+            f"Stopped early after {max_pages} pages; more Azure pages are available.",
+            flush=True,
+        )
     return items
 
 
@@ -92,6 +106,7 @@ def _langfuse_create_model(
     auth_header: str,
     *,
     model_name: str,
+    match_pattern: str,
     input_price_per_token: float,
     output_price_per_token: float,
 ) -> None:
@@ -104,7 +119,7 @@ def _langfuse_create_model(
         },
         body={
             "modelName": model_name,
-            "matchPattern": f"(?i)^({re.escape(model_name)})$",
+            "matchPattern": match_pattern,
             "unit": "TOKENS",
             "inputPrice": input_price_per_token,
             "outputPrice": output_price_per_token,
@@ -120,11 +135,30 @@ def _langfuse_delete_model(base_url: str, auth_header: str, model_id: str) -> No
     )
 
 
+def _prune_suffix_models(
+    base_url: str,
+    auth_header: str,
+    *,
+    base_model_names: set[str],
+) -> None:
+    models = _langfuse_list_models(base_url, auth_header)
+    for model in models:
+        model_name = str(model.get("modelName") or "")
+        if model.get("isLangfuseManaged", True):
+            continue
+        for base_name in base_model_names:
+            if model_name.startswith(f"{base_name}-"):
+                _langfuse_delete_model(base_url, auth_header, str(model["id"]))
+                print(f"Deleted suffix model definition: {model_name}", flush=True)
+                break
+
+
 def _upsert_langfuse_model(
     base_url: str,
     auth_header: str,
     *,
     model_name: str,
+    match_pattern: str,
     input_price_per_token: float,
     output_price_per_token: float,
 ) -> None:
@@ -136,46 +170,104 @@ def _upsert_langfuse_model(
         base_url,
         auth_header,
         model_name=model_name,
+        match_pattern=match_pattern,
         input_price_per_token=input_price_per_token,
         output_price_per_token=output_price_per_token,
     )
 
 
-def sync() -> None:
+def _parse_model_list(value: str | None) -> set[str] | None:
+    if not value:
+        return None
+    selected = {item.strip() for item in value.split(",") if item.strip()}
+    return selected or None
+
+
+def sync(*, max_pages: int | None = None, selected_models: set[str] | None = None) -> None:
     _load_env()
     region = os.getenv("AZURE_OPENAI_PRICING_REGION", "eastus2")
+    exact_suffix = os.getenv("LANGFUSE_EXACT_MODEL_SUFFIX", "false").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    prune_suffix_models = os.getenv("LANGFUSE_PRUNE_SUFFIX_MODELS", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    skip_missing_azure_price = os.getenv("AZURE_SKIP_MISSING_PRICE", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
     mappings = {
         "gpt-5.1": {
+            "model_name": os.getenv("LANGFUSE_MODEL_NAME_GPT_5_1", "gpt-5.1"),
             "input": _required("AZURE_PRICE_REGEX_GPT_5_1_INPUT"),
             "output": _required("AZURE_PRICE_REGEX_GPT_5_1_OUTPUT"),
+            "match_pattern": r"(?i)^gpt-5\.1(?:[-:].+)?$",
+            "azure_filter": "serviceName eq 'Foundry Models' and contains(meterName, 'GPT 5.1')",
         },
         "gpt-5-mini": {
+            "model_name": os.getenv("LANGFUSE_MODEL_NAME_GPT_5_MINI", "gpt-5-mini"),
             "input": _required("AZURE_PRICE_REGEX_GPT_5_MINI_INPUT"),
             "output": _required("AZURE_PRICE_REGEX_GPT_5_MINI_OUTPUT"),
+            "match_pattern": r"(?i)^gpt-5-mini(?:[-:].+)?$",
+            "azure_filter": "serviceName eq 'Foundry Models' and contains(meterName, 'GPT 5 Mini')",
         },
         "gpt-5.4": {
+            "model_name": os.getenv("LANGFUSE_MODEL_NAME_GPT_5_4", "gpt-5.4"),
             "input": _required("AZURE_PRICE_REGEX_GPT_5_4_INPUT"),
             "output": _required("AZURE_PRICE_REGEX_GPT_5_4_OUTPUT"),
+            "match_pattern": r"(?i)^gpt-5\.4(?:[-:].+)?$",
+            "azure_filter": "serviceName eq 'Foundry Models' and contains(meterName, 'GPT 5.4')",
         },
     }
-
-    items = _azure_prices_pages("serviceName eq 'Foundry Models'")
+    for cfg in mappings.values():
+        if exact_suffix:
+            cfg["match_pattern"] = rf"(?i)^({re.escape(str(cfg['model_name']))})$"
+    if selected_models is not None:
+        unknown = sorted(selected_models - set(mappings))
+        if unknown:
+            raise RuntimeError(
+                f"Unknown model(s): {', '.join(unknown)}. Valid values: {', '.join(sorted(mappings))}"
+            )
+        mappings = {name: cfg for name, cfg in mappings.items() if name in selected_models}
+        if not mappings:
+            raise RuntimeError("No models selected after filtering.")
 
     langfuse_base = _required("LANGFUSE_BASE_URL").strip('"')
     public_key = _required("LANGFUSE_PUBLIC_KEY").strip('"')
     secret_key = _required("LANGFUSE_SECRET_KEY").strip('"')
     auth_header = _langfuse_auth_header(public_key, secret_key)
+    if prune_suffix_models and not exact_suffix:
+        base_names = {str(cfg["model_name"]) for cfg in mappings.values()}
+        _prune_suffix_models(
+            langfuse_base,
+            auth_header,
+            base_model_names=base_names,
+        )
 
-    for model_name, patterns in mappings.items():
-        input_per_million = _find_latest_price(items, patterns["input"], region)
-        output_per_million = _find_latest_price(items, patterns["output"], region)
+    for _, patterns in mappings.items():
+        model_name = str(patterns["model_name"])
+        items = _azure_prices_pages(patterns["azure_filter"], max_pages=max_pages)
+        try:
+            input_per_million = _find_latest_price(items, patterns["input"], region)
+            output_per_million = _find_latest_price(items, patterns["output"], region)
+        except RuntimeError as exc:
+            if skip_missing_azure_price:
+                print(f"WARN: Skipping {model_name}: {exc}", flush=True)
+                continue
+            raise
         input_per_token = input_per_million / 1_000_000
         output_per_token = output_per_million / 1_000_000
         _upsert_langfuse_model(
             langfuse_base,
             auth_header,
             model_name=model_name,
+            match_pattern=patterns["match_pattern"],
             input_price_per_token=input_per_token,
             output_price_per_token=output_per_token,
         )
@@ -186,9 +278,26 @@ def sync() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    _ = parser.parse_args()
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=0,
+        help="Limit Azure Retail API pagination for debugging (0 means no limit).",
+    )
+    parser.add_argument(
+        "--models",
+        default="",
+        help="Comma-separated model keys to sync (for example: gpt-5.4,gpt-5-mini).",
+    )
+    args = parser.parse_args()
     try:
-        sync()
+        selected_models = _parse_model_list(args.models) or _parse_model_list(
+            os.getenv("AZURE_SYNC_MODELS")
+        )
+        sync(
+            max_pages=args.max_pages or None,
+            selected_models=selected_models,
+        )
     except Exception as exc:  # pragma: no cover
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
