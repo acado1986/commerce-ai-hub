@@ -1,0 +1,207 @@
+version: 1
+
+platforms:
+  app_builder:
+    profile_ids:
+      - integration_kit
+      - starter_kit
+      - aem_boilerplate
+      - generic_app_builder
+      - sdk_admin_ui
+    default_profile_id: starter_kit
+  adobe_commerce:
+    profile_ids:
+      - adobe_commerce_module
+    default_profile_id: adobe_commerce_module
+  generic:
+    profile_ids:
+      - generic_project
+    default_profile_id: generic_project
+
+profiles:
+  integration_kit:
+    label: Integration Kit
+    platform: app_builder
+    setup_command: aio commerce extensibility app-setup
+    skills_setup_command: aio commerce extensibility tools-setup
+    requires_specialized_skills: true
+    skills:
+      - app-builder-integration-kit
+    project_commands: []
+    triggers:
+      - integration
+      - integration kit
+      - integrate
+      - external system
+      - sync
+      - runtime action
+      - runtime actions
+      - event
+      - events
+      - webhook
+      - webhooks
+      - commerce extensibility
+      - commerce integration
+      - ims
+      - oauth
+    source_documents:
+      - https://developer.adobe.com/commerce/extensibility/developer-agent/coding-tools/
+      - https://experienceleague.adobe.com/en/docs/commerce/cloud-service/tutorials/tutorial-prerequisites
+    architecture_notes:
+      - Define Runtime action boundaries and contracts.
+      - Define event/webhook or API integration flow.
+      - Define secrets, retries, timeouts, idempotency, logging, and observability.
+
+  starter_kit:
+    label: Starter Kit
+    platform: app_builder
+    setup_command: aio commerce extensibility app-setup
+    skills_setup_command: aio commerce extensibility tools-setup
+    requires_specialized_skills: true
+    skills:
+      - app-builder-starter-kit
+    project_commands: []
+    triggers:
+      - starter kit
+      - new app builder app
+      - commerce app
+      - commerce extension
+      - proof of concept
+      - poc
+    source_documents:
+      - https://developer.adobe.com/commerce/extensibility/developer-agent/coding-tools/
+      - https://experienceleague.adobe.com/en/docs/commerce/cloud-service/tutorials/tutorial-prerequisites
+    architecture_notes:
+      - Use Commerce extensibility setup as the base project scaffold.
+      - Keep Runtime actions and UI extension boundaries explicit.
+
+  aem_boilerplate:
+    label: AEM Boilerplate
+    platform: app_builder
+    setup_command: aio commerce extensibility app-setup
+    skills_setup_command: aio commerce extensibility tools-setup
+    requires_specialized_skills: true
+    skills:
+      - aem-boilerplate
+    project_commands: []
+    triggers:
+      - aem
+      - edge delivery
+      - eds
+      - boilerplate
+      - frontend site
+      - aem boilerplate
+    source_documents:
+      - https://developer.adobe.com/commerce/extensibility/developer-agent/coding-tools/
+      - https://experienceleague.adobe.com/en/docs/commerce/cloud-service/tutorials/tutorial-prerequisites
+    architecture_notes:
+      - Separate AEM/Edge Delivery frontend concerns from Runtime/API integration concerns.
+      - Validate deployment and content-authoring constraints before implementation.
+
+  generic_app_builder:
+    label: Generic App Builder Project
+    platform: app_builder
+    setup_command: aio app init
+    skills_setup_command: null
+    requires_specialized_skills: true
+    skills:
+      - appbuilder-project-init
+    project_commands:
+      - aio app init
+      - aio app dev
+      - aio app deploy
+    triggers:
+      - generic app builder
+      - app builder project
+      - developer console
+      - aio app init
+      - aio app dev
+      - aio app deploy
+    source_documents:
+      - https://developer.adobe.com/app-builder/docs/get_started/app_builder_get_started/ai-development-tools/
+    architecture_notes:
+      - Use generic App Builder setup when Commerce extensibility scaffolding is not required.
+      - Define Developer Console project prerequisites and local/deploy commands.
+
+  sdk_admin_ui:
+    label: SDK/Admin UI
+    platform: app_builder
+    setup_command: null
+    skills_setup_command: null
+    requires_specialized_skills: false
+    skills: []
+    project_commands: []
+    triggers:
+      - admin ui
+      - admin panel
+      - sdk
+      - configuration screen
+      - simple ui
+      - small ui extension
+    source_documents:
+      - https://developer.adobe.com/app-builder/docs/get_started/app_builder_get_started/ai-development-tools/
+    architecture_notes:
+      - Keep setup minimal unless Runtime, events, API Mesh, or Commerce extensibility is required.
+      - Define whether a small custom skill should be created for repeatable SDK/Admin UI patterns.
+
+  adobe_commerce_module:
+    label: Adobe Commerce module/customization
+    platform: adobe_commerce
+    setup_command: null
+    skills_setup_command: null
+    requires_specialized_skills: false
+    skills:
+      - adobe-commerce-developer
+    project_commands: []
+    triggers:
+      - module
+      - plugin
+      - observer
+      - di.xml
+      - cache
+      - indexer
+      - data patch
+      - db schema
+    source_documents:
+      - knowledge/adobe-commerce.md
+    architecture_notes:
+      - Define module boundaries, dependency injection, cache/indexer impact, data patches, and tests.
+
+  generic_project:
+    label: Generic project setup
+    platform: generic
+    setup_command: null
+    skills_setup_command: null
+    requires_specialized_skills: false
+    skills: []
+    project_commands: []
+    triggers: []
+    source_documents: []
+    architecture_notes:
+      - Ask for platform details before prescribing platform-specific setup commands.
+
+capabilities:
+  api_mesh:
+    label: API Mesh
+    applicable_platforms:
+      - app_builder
+      - adobe_commerce
+    triggers:
+      - api mesh
+      - graphql mesh
+      - mesh gateway
+      - graphql gateway
+      - aio api-mesh
+    commands:
+      - aio api-mesh:init
+      - aio api-mesh:create
+      - aio api-mesh:update
+      - aio api-mesh:get
+      - aio api-mesh:delete
+    skills:
+      - api-mesh
+    source_documents:
+      - https://developer.adobe.com/graphql-mesh-gateway/
+    architecture_notes:
+      - Model API Mesh as an add-on capability when GraphQL source composition is required.
+      - Include mesh configuration, create/update/get validation commands, and rollback path.

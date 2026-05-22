@@ -178,6 +178,56 @@ Artifacts are written to:
 artifacts/runs/<run_id>/
 ```
 
+## Platform Catalog
+
+Platform/profile selection is config-driven from:
+
+```text
+config/platform_catalog.yaml
+```
+
+Default behavior:
+
+- The selector tries constrained LLM selection first.
+- If LLM output is invalid/unavailable, it falls back to deterministic rules.
+- You can disable LLM selection with:
+
+```text
+PLATFORM_SELECTION_USE_LLM=false
+```
+
+- You can override the catalog path with:
+
+```text
+PLATFORM_CATALOG_PATH=/absolute/path/to/platform_catalog.yaml
+```
+
+Add a new platform/profile using the helper script:
+
+```bash
+uv run python scripts/add_platform_catalog_entry.py \
+  --platform-id shopify \
+  --profile-id shopify_app \
+  --label "Shopify App" \
+  --setup-command "shopify app init" \
+  --requires-specialized-skills \
+  --skill shopify-app-dev \
+  --trigger "shopify" \
+  --trigger "shopify app" \
+  --source-document "https://shopify.dev/docs/apps/build" \
+  --architecture-note "Define webhook, auth, and app-extension boundaries."
+```
+
+Dry-run without writing:
+
+```bash
+uv run python scripts/add_platform_catalog_entry.py \
+  --platform-id shopify \
+  --profile-id shopify_app \
+  --label "Shopify App" \
+  --dry-run
+```
+
 ## LangGraph Server
 
 ```bash
@@ -226,13 +276,14 @@ http://localhost:2024/mcp
 
 The `delivery_mcp` graph is exposed as an MCP tool with explicit schema fields:
 
-- `action`: `plan | continue | review | revise | approve`
-- `input_text`: required for `action=plan`
-- `run_id`: required for `continue`, `review`, `revise`, `approve`
+- `action`: `plan | start_async | status | cancel | continue | review | revise | approve`
+- `input_text`: required for `action=plan` and `action=start_async`
+- `run_id`: required for `status`, `cancel`, `continue`, `review`, `revise`, `approve`
 - `continue_action`: `continue | revise | approve | reject` for `action=continue`
 - `instruction`: optional for continue, required for revise
 - `approved`, `reviewer_note`: for `action=approve`
 - `timeout`: per-call timeout in seconds
+- `wait_seconds`: optional for `action=cancel`
 
 Recommended flow through MCP:
 
@@ -240,6 +291,13 @@ Recommended flow through MCP:
 2. Repeatedly call tool with `action=continue`, `continue_action=continue`.
 3. When status is `awaiting_approval`, call with `action=approve` or `action=continue` + `continue_action=revise/reject`.
 4. Call with `action=review` at any point to inspect run state and artifact paths.
+
+Async flow through MCP:
+
+1. Call tool with `action=start_async` and request `input_text`.
+2. Poll with `action=status` until status is `awaiting_approval`, `completed`, `failed`, or `cancelled`.
+3. If needed, call `action=cancel`.
+4. If status is `awaiting_approval`, resolve with `action=approve` or `action=continue` + `continue_action=revise/reject`.
 
 Legacy stdio MCP server (`uv run delivery-hub-mcp`) is still available for compatibility, but `/mcp` on LangGraph Server is the primary MCP interface.
 

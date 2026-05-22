@@ -14,15 +14,26 @@ from typing_extensions import TypedDict
 
 from agent.mcp_server import (
     approve_delivery,
+    cancel_delivery,
     continue_delivery,
+    get_delivery_status,
     plan_delivery,
     review_delivery,
     revise_delivery,
+    start_delivery_async,
 )
 from agent.observability import traced_graph
 
-
-ActionType = Literal["plan", "continue", "review", "revise", "approve"]
+ActionType = Literal[
+    "plan",
+    "start_async",
+    "status",
+    "cancel",
+    "continue",
+    "review",
+    "revise",
+    "approve",
+]
 ContinueActionType = Literal["continue", "revise", "approve", "reject"]
 
 
@@ -36,6 +47,7 @@ class MCPToolInput(TypedDict, total=False):
     reviewer_note: str
     source_type: str
     timeout: int
+    wait_seconds: float
 
 
 class MCPToolOutput(TypedDict, total=False):
@@ -61,7 +73,16 @@ class MCPToolState(MCPToolInput, MCPToolOutput, total=False):
     pass
 
 
-ALLOWED_ACTIONS: set[str] = {"plan", "continue", "review", "revise", "approve"}
+ALLOWED_ACTIONS: set[str] = {
+    "plan",
+    "start_async",
+    "status",
+    "cancel",
+    "continue",
+    "review",
+    "revise",
+    "approve",
+}
 ALLOWED_CONTINUE_ACTIONS: set[str] = {"continue", "revise", "approve", "reject"}
 OUTPUT_FIELDS: set[str] = {
     "run_id",
@@ -90,7 +111,10 @@ def _parse_payload(raw: str) -> dict[str, Any]:
             return payload
     except json.JSONDecodeError:
         pass
-    return {"status": "failed", "error": "Invalid JSON payload returned by delegated action."}
+    return {
+        "status": "failed",
+        "error": "Invalid JSON payload returned by delegated action.",
+    }
 
 
 def _error(message: str) -> MCPToolState:
@@ -109,10 +133,20 @@ def _normalize_output(payload: dict[str, Any]) -> MCPToolState:
     return {key: value for key, value in payload.items() if key in OUTPUT_FIELDS}
 
 
+def _normalize_wait_seconds(raw_wait: Any, default: float = 2.0) -> float:
+    try:
+        wait_seconds = float(raw_wait)
+    except (TypeError, ValueError):
+        return default
+    return wait_seconds if wait_seconds >= 0 else default
+
+
 def delivery_mcp_action_node(state: MCPToolState) -> MCPToolState:
     action = str(state.get("action", "")).strip()
     if action not in ALLOWED_ACTIONS:
-        return _error("action must be one of: plan, continue, review, revise, approve.")
+        return _error(
+            "action must be one of: plan, start_async, status, cancel, continue, review, revise, approve."
+        )
 
     timeout = _normalize_timeout(state.get("timeout"), default=900)
 
@@ -122,31 +156,61 @@ def delivery_mcp_action_node(state: MCPToolState) -> MCPToolState:
             return _error("input_text is required when action='plan'.")
         return _normalize_output(
             _parse_payload(
-            plan_delivery(
-                input_text=input_text,
-                source_type=state.get("source_type", "mcp"),
-                timeout=timeout,
+                plan_delivery(
+                    input_text=input_text,
+                    source_type=state.get("source_type", "mcp"),
+                    timeout=timeout,
+                )
             )
         )
+
+    if action == "start_async":
+        input_text = state.get("input_text", "").strip()
+        if not input_text:
+            return _error("input_text is required when action='start_async'.")
+        return _normalize_output(
+            _parse_payload(
+                start_delivery_async(
+                    input_text=input_text,
+                    source_type=state.get("source_type", "mcp_async"),
+                    timeout=timeout,
+                )
+            )
         )
 
     run_id = state.get("run_id", "").strip()
     if not run_id:
         return _error("run_id is required for this action.")
 
+    if action == "status":
+        return _normalize_output(_parse_payload(get_delivery_status(run_id=run_id)))
+
+    if action == "cancel":
+        wait_seconds = _normalize_wait_seconds(state.get("wait_seconds"), default=2.0)
+        return _normalize_output(
+            _parse_payload(
+                cancel_delivery(
+                    run_id=run_id,
+                    wait_seconds=wait_seconds,
+                )
+            )
+        )
+
     if action == "continue":
         continue_action = str(state.get("continue_action", "continue")).strip()
         if continue_action not in ALLOWED_CONTINUE_ACTIONS:
-            return _error("continue_action must be one of: continue, revise, approve, reject.")
+            return _error(
+                "continue_action must be one of: continue, revise, approve, reject."
+            )
         return _normalize_output(
             _parse_payload(
-            continue_delivery(
-                run_id=run_id,
-                action=continue_action,
-                instruction=state.get("instruction", ""),
-                timeout=timeout,
+                continue_delivery(
+                    run_id=run_id,
+                    action=continue_action,
+                    instruction=state.get("instruction", ""),
+                    timeout=timeout,
+                )
             )
-        )
         )
 
     if action == "review":
@@ -158,25 +222,27 @@ def delivery_mcp_action_node(state: MCPToolState) -> MCPToolState:
             return _error("instruction is required when action='revise'.")
         return _normalize_output(
             _parse_payload(
-            revise_delivery(
-                run_id=run_id,
-                instruction=instruction,
-                timeout=timeout,
+                revise_delivery(
+                    run_id=run_id,
+                    instruction=instruction,
+                    timeout=timeout,
+                )
             )
-        )
         )
 
     if action == "approve":
         return _normalize_output(
             _parse_payload(
-            approve_delivery(
-                run_id=run_id,
-                approved=bool(state.get("approved", True)),
-                reviewer_note=state.get("reviewer_note", ""),
-                timeout=timeout,
+                approve_delivery(
+                    run_id=run_id,
+                    approved=bool(state.get("approved", True)),
+                    reviewer_note=state.get("reviewer_note", ""),
+                    timeout=timeout,
+                )
             )
         )
-        )
+
+    return _error("Unhandled action.")
 
 
 builder = StateGraph(

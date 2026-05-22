@@ -13,7 +13,7 @@ Primary entrypoints:
 
 The current default stage order is:
 
-`START -> intake -> classify -> requirements -> architecture -> planning -> qa -> documentation -> audit -> END`
+`START -> intake -> classify -> platform_selection -> requirements -> architecture -> planning -> qa -> documentation -> audit -> END`
 
 Human approval is interleaved through `approval` and `approval_router`. Most content-producing stages stop with `next_action="human_review"` and only continue after approval or revision.
 
@@ -43,6 +43,7 @@ Examples:
 
 - `src/agent/nodes/intake.py`
 - `src/agent/nodes/classify.py`
+- `src/agent/nodes/platform_selection.py`
 - `src/agent/nodes/audit.py`
 - `src/agent/nodes/approval.py`
 - `src/agent/nodes/approval_router.py`
@@ -63,6 +64,7 @@ Examples:
 - `src/agent/nodes/requirements.py`
 - `src/agent/nodes/architecture.py`
 - `src/agent/nodes/planning.py`
+- `src/agent/nodes/planning_subgraph.py`
 - `src/agent/nodes/qa.py`
 - `src/agent/nodes/documentation.py`
 
@@ -81,7 +83,7 @@ What `generate_markdown(...)` already handles:
 - audit and token usage tracking
 - setting `approval_status="pending"` and `next_action="human_review"`
 
-If a stage needs multiple artifacts, chain multiple `generate_markdown(...)` calls in the same node like `planning_node`.
+If a stage needs multiple artifacts with clear dependencies, prefer a small stage-local subgraph like `src/agent/nodes/planning_subgraph.py` and keep the top-level node as a thin wrapper.
 
 ### 3. Routing helpers
 
@@ -137,7 +139,56 @@ When adding a new stage, usually touch these files:
 6. If chat/MCP behavior depends on the new stage, review:
    - `src/agent/chat_graph.py`
    - `src/agent/mcp_server.py`
+   - `src/agent/mcp_tool_graph.py`
 7. Add or update tests.
+
+## Skill Checklist: Add Node
+
+Use this quick checklist when adding one node to the existing workflow path:
+
+1. Node implementation: deterministic node or `generate_markdown(...)` wrapper.
+2. State updates: only durable fields in `DeliveryHubState`.
+3. Routing: forward route + approval-resume route in `router.py`.
+4. Graph wiring: add node and conditional edges in `orchestrator/graph.py`.
+5. MCP/chat impact: update `mcp_server.py`, `mcp_tool_graph.py`, and `chat_graph.py` only if behavior changes.
+6. Tests: update unit routing tests and one integration path.
+
+## Skill Checklist: Add Workflow
+
+Use this when introducing a new end-to-end workflow branch:
+
+1. Request mapping: update `mapped_request_type(...)` and classification assumptions.
+2. Stage sequence: define the workflow in `orchestrator/graph.py` and `router.py`.
+3. Artifacts: define required artifacts and agent profiles.
+4. Approval semantics: keep stage-level approval and revision loop consistent.
+5. Interfaces: verify parity across graph, chat, and MCP tool entrypoints.
+6. Validation: add an integration test that completes the full branch.
+
+## Skill Checklist: Add Platform
+
+Use this when onboarding a new platform/profile in the platform selection catalog:
+
+1. Add catalog entry using `scripts/add_platform_catalog_entry.py`.
+2. Verify `platforms.<platform_id>.profile_ids` and `default_profile_id` are valid.
+3. Include profile metadata: triggers, setup commands, skills, source docs, architecture notes.
+4. If needed, add cross-platform capabilities under `capabilities`.
+5. Run selection tests and parity tests before merging.
+
+Example command:
+
+```bash
+uv run python scripts/add_platform_catalog_entry.py \
+  --platform-id shopify \
+  --profile-id shopify_app \
+  --label "Shopify App" \
+  --setup-command "shopify app init" \
+  --requires-specialized-skills \
+  --skill shopify-app-dev \
+  --trigger "shopify" \
+  --trigger "shopify app" \
+  --source-document "https://shopify.dev/docs/apps/build" \
+  --architecture-note "Define webhook, auth, and app-extension boundaries."
+```
 
 Use the smallest viable change. Most new content stages should be thin wrappers around `generate_markdown(...)`, not bespoke mini-frameworks.
 
@@ -148,6 +199,7 @@ Relevant tests:
 - `tests/unit_tests/test_configuration.py`: routing and deployment rules
 - `tests/unit_tests/test_mcp_graph_driver.py`: checkpoint/MCP flow
 - `tests/integration_tests/test_graph.py`: end-to-end artifact creation
+- `tests/integration_tests/test_chat_mcp_parity.py`: chat vs MCP parity checks
 
 Useful commands:
 

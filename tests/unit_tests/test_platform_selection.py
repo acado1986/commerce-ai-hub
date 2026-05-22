@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from agent.nodes.platform_selection import platform_selection_node
-from agent.platform_catalog import select_solution_profile
+from agent.platform_catalog import load_platform_catalog, select_solution_profile
 
 
 def test_app_builder_integration_kit_selected_for_runtime_and_events() -> None:
@@ -76,3 +76,57 @@ def test_platform_selection_node_writes_artifact(monkeypatch, tmp_path: Path) ->
         == "aio commerce extensibility app-setup"
     )
     assert state["next_action"] == "continue"
+
+
+def test_platform_catalog_structure_loads() -> None:
+    catalog = load_platform_catalog()
+
+    assert catalog["version"] == 1
+    assert "platforms" in catalog
+    assert "profiles" in catalog
+    assert "capabilities" in catalog
+    assert "integration_kit" in catalog["profiles"]
+    assert "api_mesh" in catalog["capabilities"]
+
+
+def test_llm_selection_is_constrained_to_catalog(monkeypatch) -> None:
+    class _DummySelectionResponse:
+        content = json.dumps(
+            {
+                "profile_id": "integration_kit",
+                "add_on_ids": ["api_mesh", "invalid_capability"],
+                "confidence_score": 0.93,
+                "reason": "Runtime actions and API Mesh were requested.",
+            }
+        )
+
+    class _DummySelectionModel:
+        def invoke(self, prompt: str):
+            return _DummySelectionResponse()
+
+    monkeypatch.setattr(
+        "agent.platform_catalog.get_model", lambda **kwargs: _DummySelectionModel()
+    )
+    monkeypatch.setattr(
+        "agent.platform_catalog.invoke_model",
+        lambda model, prompt: model.invoke(prompt),
+    )
+    monkeypatch.setattr(
+        "agent.platform_catalog.deployment_for_classification", lambda: "dummy"
+    )
+    monkeypatch.setenv("PLATFORM_SELECTION_USE_LLM", "true")
+
+    profile = select_solution_profile(
+        {
+            "platforms": ["app_builder"],
+            "input_text": "Need App Builder runtime actions with API Mesh.",
+            "timeout": 30,
+        }
+    )
+
+    assert profile["selection_method"] == "llm"
+    assert profile["scaffold_type"] == "integration_kit"
+    assert [item["capability"] for item in profile["add_ons"]] == ["api_mesh"]
+    assert "invalid_capability" not in {
+        item["capability"] for item in profile["add_ons"]
+    }

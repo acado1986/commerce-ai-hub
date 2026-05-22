@@ -1,277 +1,404 @@
-"""Deterministic platform setup selection catalog."""
+"""Config-driven platform setup selection with LLM-assisted constrained choice."""
 
 from __future__ import annotations
 
+import json
+import os
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
+import yaml
+
+from agent.llm import (
+    deployment_for_classification,
+    get_model,
+    invoke_model,
+    response_content,
+)
 from agent.orchestrator.state import DeliveryHubState
 
-APP_BUILDER_SETUP_COMMAND = "aio commerce extensibility app-setup"
-COMMERCE_AI_TOOLS_SETUP_COMMAND = "aio commerce extensibility tools-setup"
-APP_BUILDER_PROJECT_COMMANDS = [
-    "aio app init",
-    "aio app dev",
-    "aio app deploy",
-]
-API_MESH_COMMANDS = [
-    "aio api-mesh:init",
-    "aio api-mesh:create",
-    "aio api-mesh:update",
-    "aio api-mesh:get",
-    "aio api-mesh:delete",
-]
 
-APP_BUILDER_PROFILES: dict[str, dict[str, Any]] = {
-    "integration_kit": {
-        "label": "Integration Kit",
-        "platform": "app_builder",
-        "setup_command": APP_BUILDER_SETUP_COMMAND,
-        "skills_setup_command": COMMERCE_AI_TOOLS_SETUP_COMMAND,
-        "requires_specialized_skills": True,
-        "skills": ["app-builder-integration-kit"],
-        "triggers": [
-            "integration",
-            "integration kit",
-            "integrate",
-            "external system",
-            "sync",
-            "runtime action",
-            "runtime actions",
-            "event",
-            "events",
-            "webhook",
-            "webhooks",
-            "commerce extensibility",
-            "commerce integration",
-            "ims",
-            "oauth",
-        ],
-        "architecture_notes": [
-            "Define Runtime action boundaries and contracts.",
-            "Define event/webhook or API integration flow.",
-            "Define secrets, retries, timeouts, idempotency, logging, and observability.",
-        ],
-        "source_documents": [
-            "https://developer.adobe.com/commerce/extensibility/developer-agent/coding-tools/",
-            "https://experienceleague.adobe.com/en/docs/commerce/cloud-service/tutorials/tutorial-prerequisites",
-        ],
-    },
-    "starter_kit": {
-        "label": "Starter Kit",
-        "platform": "app_builder",
-        "setup_command": APP_BUILDER_SETUP_COMMAND,
-        "skills_setup_command": COMMERCE_AI_TOOLS_SETUP_COMMAND,
-        "requires_specialized_skills": True,
-        "skills": ["app-builder-starter-kit"],
-        "triggers": [
-            "starter kit",
-            "new app builder app",
-            "commerce app",
-            "commerce extension",
-            "proof of concept",
-            "poc",
-        ],
-        "architecture_notes": [
-            "Use Commerce extensibility setup as the base project scaffold.",
-            "Keep Runtime actions and UI extension boundaries explicit.",
-        ],
-        "source_documents": [
-            "https://developer.adobe.com/commerce/extensibility/developer-agent/coding-tools/",
-            "https://experienceleague.adobe.com/en/docs/commerce/cloud-service/tutorials/tutorial-prerequisites",
-        ],
-    },
-    "aem_boilerplate": {
-        "label": "AEM Boilerplate",
-        "platform": "app_builder",
-        "setup_command": APP_BUILDER_SETUP_COMMAND,
-        "skills_setup_command": COMMERCE_AI_TOOLS_SETUP_COMMAND,
-        "requires_specialized_skills": True,
-        "skills": ["aem-boilerplate"],
-        "triggers": [
-            "aem",
-            "edge delivery",
-            "eds",
-            "boilerplate",
-            "frontend site",
-            "aem boilerplate",
-        ],
-        "architecture_notes": [
-            "Separate AEM/Edge Delivery frontend concerns from Runtime/API integration concerns.",
-            "Validate deployment and content-authoring constraints before implementation.",
-        ],
-        "source_documents": [
-            "https://developer.adobe.com/commerce/extensibility/developer-agent/coding-tools/",
-            "https://experienceleague.adobe.com/en/docs/commerce/cloud-service/tutorials/tutorial-prerequisites",
-        ],
-    },
-    "generic_app_builder": {
-        "label": "Generic App Builder Project",
-        "platform": "app_builder",
-        "setup_command": "aio app init",
-        "skills_setup_command": None,
-        "requires_specialized_skills": True,
-        "skills": ["appbuilder-project-init"],
-        "triggers": [
-            "generic app builder",
-            "app builder project",
-            "developer console",
-            "aio app init",
-            "aio app dev",
-            "aio app deploy",
-        ],
-        "architecture_notes": [
-            "Use generic App Builder setup when Commerce extensibility scaffolding is not required.",
-            "Define Developer Console project prerequisites and local/deploy commands.",
-        ],
-        "source_documents": [
-            "https://developer.adobe.com/app-builder/docs/get_started/app_builder_get_started/ai-development-tools/",
-        ],
-    },
-    "sdk_admin_ui": {
-        "label": "SDK/Admin UI",
-        "platform": "app_builder",
-        "setup_command": None,
-        "skills_setup_command": None,
-        "requires_specialized_skills": False,
-        "skills": [],
-        "triggers": [
-            "admin ui",
-            "admin panel",
-            "sdk",
-            "configuration screen",
-            "simple ui",
-            "small ui extension",
-        ],
-        "architecture_notes": [
-            "Keep setup minimal unless Runtime, events, API Mesh, or Commerce extensibility is required.",
-            "Define whether a small custom skill should be created for repeatable SDK/Admin UI patterns.",
-        ],
-        "source_documents": [
-            "https://developer.adobe.com/app-builder/docs/get_started/app_builder_get_started/ai-development-tools/",
-        ],
-    },
-}
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
-ADD_ON_CAPABILITIES: dict[str, dict[str, Any]] = {
-    "api_mesh": {
-        "label": "API Mesh",
-        "triggers": [
-            "api mesh",
-            "graphql mesh",
-            "mesh gateway",
-            "mesh",
-            "graphql gateway",
-        ],
-        "commands": API_MESH_COMMANDS,
-        "skills": ["api-mesh"],
-        "source_documents": ["https://developer.adobe.com/graphql-mesh-gateway/"],
-        "architecture_notes": [
-            "Model API Mesh as an add-on capability when GraphQL source composition is required.",
-            "Include mesh configuration, create/update/get validation commands, and rollback path.",
-        ],
-    }
-}
+
+def _catalog_path() -> Path:
+    configured = os.getenv("PLATFORM_CATALOG_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return _repo_root() / "config" / "platform_catalog.yaml"
+
+
+@lru_cache(maxsize=1)
+def load_platform_catalog() -> dict[str, Any]:
+    """Load and validate the platform catalog."""
+    path = _catalog_path()
+    if not path.exists():
+        raise RuntimeError(f"Platform catalog not found: {path}")
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise RuntimeError("Platform catalog root must be a mapping.")
+
+    platforms = raw.get("platforms")
+    profiles = raw.get("profiles")
+    capabilities = raw.get("capabilities")
+    if (
+        not isinstance(platforms, dict)
+        or not isinstance(profiles, dict)
+        or not isinstance(capabilities, dict)
+    ):
+        raise RuntimeError(
+            "Platform catalog requires mapping keys: platforms, profiles, capabilities."
+        )
+
+    for platform_key, platform_config in platforms.items():
+        if not isinstance(platform_config, dict):
+            raise RuntimeError(f"platforms.{platform_key} must be a mapping")
+        profile_ids = platform_config.get("profile_ids")
+        default_profile_id = platform_config.get("default_profile_id")
+        if not isinstance(profile_ids, list) or not all(
+            isinstance(item, str) for item in profile_ids
+        ):
+            raise RuntimeError(
+                f"platforms.{platform_key}.profile_ids must be a string list"
+            )
+        if not isinstance(default_profile_id, str):
+            raise RuntimeError(
+                f"platforms.{platform_key}.default_profile_id must be a string"
+            )
+        if default_profile_id not in profile_ids:
+            raise RuntimeError(
+                f"platforms.{platform_key}.default_profile_id must be included in profile_ids"
+            )
+        for profile_id in profile_ids:
+            if profile_id not in profiles:
+                raise RuntimeError(
+                    f"Unknown profile id '{profile_id}' in platforms.{platform_key}"
+                )
+
+    for profile_id, profile in profiles.items():
+        if not isinstance(profile, dict):
+            raise RuntimeError(f"profiles.{profile_id} must be a mapping")
+        required_keys = [
+            "label",
+            "platform",
+            "requires_specialized_skills",
+            "skills",
+            "project_commands",
+            "triggers",
+            "source_documents",
+            "architecture_notes",
+        ]
+        for key in required_keys:
+            if key not in profile:
+                raise RuntimeError(
+                    f"profiles.{profile_id} missing required key '{key}'"
+                )
+
+    for capability_id, capability in capabilities.items():
+        if not isinstance(capability, dict):
+            raise RuntimeError(f"capabilities.{capability_id} must be a mapping")
+        required_keys = [
+            "label",
+            "applicable_platforms",
+            "triggers",
+            "commands",
+            "skills",
+            "source_documents",
+            "architecture_notes",
+        ]
+        for key in required_keys:
+            if key not in capability:
+                raise RuntimeError(
+                    f"capabilities.{capability_id} missing required key '{key}'"
+                )
+
+    return raw
 
 
 def select_solution_profile(state: DeliveryHubState) -> dict[str, Any]:
-    """Select the allowed setup profile from deterministic platform rules."""
-    platforms = list(state.get("platforms", [])) or ["generic"]
-    text = state.get("input_text", "").lower()
-    if "app_builder" in platforms:
-        return _select_app_builder_profile(text)
-    if "adobe_commerce" in platforms:
-        return {
-            "platform": "adobe_commerce",
-            "scaffold_type": "adobe_commerce_module",
-            "scaffold_label": "Adobe Commerce module/customization",
-            "setup_command": None,
-            "skills_setup_command": None,
-            "requires_specialized_skills": False,
-            "skills": ["adobe-commerce-developer"],
-            "add_ons": _select_add_ons(text),
-            "reason": "The classifier identified Adobe Commerce without App Builder scaffolding requirements.",
-            "source_documents": ["knowledge/adobe-commerce.md"],
-            "architecture_notes": [
-                "Define module boundaries, dependency injection, cache/indexer impact, data patches, and tests.",
-            ],
-            "confidence_score": 0.8,
+    """Select a setup profile from catalog; prefer LLM constrained selection with safe fallback."""
+    catalog = load_platform_catalog()
+    text = str(state.get("input_text", "")).strip()
+    platforms = _normalized_platforms(state, catalog)
+
+    fallback = _deterministic_selection(text=text, platforms=platforms, catalog=catalog)
+    llm_enabled = os.getenv("PLATFORM_SELECTION_USE_LLM", "true").lower() == "true"
+    if not llm_enabled:
+        return {**fallback, "selection_method": "deterministic"}
+
+    llm_choice = _llm_constrained_selection(
+        text=text,
+        platforms=platforms,
+        catalog=catalog,
+        timeout=_state_timeout(state),
+    )
+    if not llm_choice:
+        return {**fallback, "selection_method": "deterministic_fallback"}
+
+    profile_id = llm_choice["profile_id"]
+    add_on_ids = llm_choice.get("add_on_ids", [])
+    selected = _build_solution_profile(
+        catalog=catalog,
+        profile_id=profile_id,
+        add_on_ids=add_on_ids,
+        reason=llm_choice.get("reason", ""),
+        confidence=llm_choice.get(
+            "confidence_score", fallback.get("confidence_score", 0.65)
+        ),
+    )
+    selected["selection_method"] = "llm"
+    return selected
+
+
+def _normalized_platforms(
+    state: DeliveryHubState, catalog: dict[str, Any]
+) -> list[str]:
+    available = set(catalog["platforms"].keys())
+    input_platforms = [
+        str(item).strip() for item in state.get("platforms", []) if str(item).strip()
+    ]
+    normalized = [item for item in input_platforms if item in available]
+    return normalized or ["generic"]
+
+
+def _state_timeout(state: DeliveryHubState, default: int = 60) -> int:
+    raw_timeout = state.get("timeout", default)
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        return default
+    return timeout if timeout > 0 else default
+
+
+def _candidate_profiles(platforms: list[str], catalog: dict[str, Any]) -> list[str]:
+    profile_ids: list[str] = []
+    for platform in platforms:
+        config = catalog["platforms"].get(platform, {})
+        for profile_id in config.get("profile_ids", []):
+            if profile_id not in profile_ids:
+                profile_ids.append(profile_id)
+    if not profile_ids:
+        generic_default = catalog["platforms"]["generic"]["default_profile_id"]
+        profile_ids = [generic_default]
+    return profile_ids
+
+
+def _candidate_add_ons(platforms: list[str], catalog: dict[str, Any]) -> list[str]:
+    add_on_ids: list[str] = []
+    for capability_id, capability in catalog["capabilities"].items():
+        applicable = set(capability.get("applicable_platforms", []))
+        if applicable.intersection(platforms):
+            add_on_ids.append(capability_id)
+    return add_on_ids
+
+
+def _llm_constrained_selection(
+    text: str,
+    platforms: list[str],
+    catalog: dict[str, Any],
+    timeout: int,
+) -> dict[str, Any] | None:
+    candidate_profiles = _candidate_profiles(platforms, catalog)
+    candidate_add_ons = _candidate_add_ons(platforms, catalog)
+    if not text.strip():
+        return None
+
+    profile_hints = {
+        pid: {
+            "label": catalog["profiles"][pid].get("label"),
+            "platform": catalog["profiles"][pid].get("platform"),
+            "triggers": catalog["profiles"][pid].get("triggers", []),
         }
+        for pid in candidate_profiles
+    }
+    add_on_hints = {
+        aid: {
+            "label": catalog["capabilities"][aid].get("label"),
+            "triggers": catalog["capabilities"][aid].get("triggers", []),
+        }
+        for aid in candidate_add_ons
+    }
+
+    prompt = (
+        "You are selecting a platform setup profile for implementation planning.\n"
+        "Return strict JSON only with keys: profile_id, add_on_ids, confidence_score, reason.\n"
+        "Rules:\n"
+        "- profile_id must be exactly one of candidate_profile_ids.\n"
+        "- add_on_ids must contain only values from candidate_add_on_ids.\n"
+        "- confidence_score must be a number from 0 to 1.\n"
+        "- reason must be concise and concrete.\n\n"
+        f"classified_platforms: {json.dumps(platforms)}\n"
+        f"candidate_profile_ids: {json.dumps(candidate_profiles)}\n"
+        f"candidate_profile_hints: {json.dumps(profile_hints)}\n"
+        f"candidate_add_on_ids: {json.dumps(candidate_add_ons)}\n"
+        f"candidate_add_on_hints: {json.dumps(add_on_hints)}\n\n"
+        f"request_text:\n{text}\n"
+    )
+
+    try:
+        deployment = deployment_for_classification()
+        model = get_model(timeout=timeout, deployment=deployment)
+        response = invoke_model(model, prompt)
+        payload = json.loads(response_content(response))
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    profile_id = payload.get("profile_id")
+    if profile_id not in candidate_profiles:
+        return None
+
+    raw_add_on_ids = payload.get("add_on_ids", [])
+    if not isinstance(raw_add_on_ids, list):
+        raw_add_on_ids = []
+    add_on_ids = [
+        item
+        for item in raw_add_on_ids
+        if isinstance(item, str) and item in candidate_add_ons
+    ]
+
+    try:
+        confidence = float(payload.get("confidence_score", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    reason = str(payload.get("reason", "")).strip()
     return {
-        "platform": "generic",
-        "scaffold_type": "generic_project",
-        "scaffold_label": "Generic project setup",
-        "setup_command": None,
-        "skills_setup_command": None,
-        "requires_specialized_skills": False,
-        "skills": [],
-        "add_ons": _select_add_ons(text),
-        "reason": "No supported Adobe-specific platform was confidently identified.",
-        "source_documents": [],
-        "architecture_notes": [
-            "Ask for platform details before prescribing Adobe setup commands."
-        ],
-        "confidence_score": 0.55,
+        "profile_id": profile_id,
+        "add_on_ids": add_on_ids,
+        "confidence_score": confidence,
+        "reason": reason,
     }
 
 
-def _select_app_builder_profile(text: str) -> dict[str, Any]:
-    scored: list[tuple[int, str, dict[str, Any]]] = []
-    for key, profile in APP_BUILDER_PROFILES.items():
-        score = sum(1 for trigger in profile["triggers"] if trigger in text)
-        scored.append((score, key, profile))
-    score, scaffold_type, selected = max(scored, key=lambda item: item[0])
-    if score == 0:
-        scaffold_type = "starter_kit"
-        selected = APP_BUILDER_PROFILES[scaffold_type]
+def _deterministic_selection(
+    text: str,
+    platforms: list[str],
+    catalog: dict[str, Any],
+) -> dict[str, Any]:
+    lower_text = text.lower()
+    candidate_profiles = _candidate_profiles(platforms, catalog)
 
-    add_ons = _select_add_ons(text)
-    skills = list(
-        dict.fromkeys(
-            [
-                *selected["skills"],
-                *[skill for add_on in add_ons for skill in add_on["skills"]],
-            ]
+    best_profile_id = candidate_profiles[0]
+    best_score = -1
+    for profile_id in candidate_profiles:
+        profile = catalog["profiles"][profile_id]
+        triggers = profile.get("triggers", [])
+        score = sum(
+            1
+            for trigger in triggers
+            if isinstance(trigger, str) and trigger.lower() in lower_text
         )
+        if score > best_score:
+            best_score = score
+            best_profile_id = profile_id
+
+    if best_score <= 0:
+        best_profile_id = catalog["platforms"][platforms[0]].get(
+            "default_profile_id", best_profile_id
+        )
+
+    add_on_ids = _deterministic_add_ons(lower_text, platforms, catalog)
+    confidence = 0.88 if best_score > 0 else 0.68
+    if best_profile_id in {"adobe_commerce_module", "generic_project"}:
+        confidence = 0.8 if best_profile_id == "adobe_commerce_module" else 0.55
+
+    return _build_solution_profile(
+        catalog=catalog,
+        profile_id=best_profile_id,
+        add_on_ids=add_on_ids,
+        reason=_default_reason(best_profile_id, best_score),
+        confidence=confidence,
     )
-    confidence = 0.88 if score > 0 else 0.68
+
+
+def _deterministic_add_ons(
+    lower_text: str,
+    platforms: list[str],
+    catalog: dict[str, Any],
+) -> list[str]:
+    selected: list[str] = []
+    for capability_id in _candidate_add_ons(platforms, catalog):
+        capability = catalog["capabilities"][capability_id]
+        triggers = capability.get("triggers", [])
+        if any(
+            isinstance(trigger, str) and trigger.lower() in lower_text
+            for trigger in triggers
+        ):
+            selected.append(capability_id)
+    return selected
+
+
+def _build_solution_profile(
+    catalog: dict[str, Any],
+    profile_id: str,
+    add_on_ids: list[str],
+    reason: str,
+    confidence: float,
+) -> dict[str, Any]:
+    profile = catalog["profiles"][profile_id]
+    add_ons = [
+        _format_add_on(catalog["capabilities"][add_on_id], add_on_id)
+        for add_on_id in add_on_ids
+    ]
+
+    skills = list(profile.get("skills", []))
+    for add_on in add_ons:
+        for skill in add_on.get("skills", []):
+            if skill not in skills:
+                skills.append(skill)
+
+    requires_specialized_skills = bool(
+        profile.get("requires_specialized_skills", False) or add_ons
+    )
+
     return {
-        "platform": "app_builder",
-        "scaffold_type": scaffold_type,
-        "scaffold_label": selected["label"],
-        "setup_command": selected["setup_command"],
-        "skills_setup_command": selected["skills_setup_command"],
-        "project_commands": APP_BUILDER_PROJECT_COMMANDS
-        if scaffold_type == "generic_app_builder"
-        else [],
-        "requires_specialized_skills": bool(
-            selected["requires_specialized_skills"] or add_ons
-        ),
+        "catalog_version": catalog.get("version"),
+        "platform": profile.get("platform", "generic"),
+        "scaffold_type": profile_id,
+        "scaffold_label": profile.get("label", profile_id),
+        "setup_command": profile.get("setup_command"),
+        "skills_setup_command": profile.get("skills_setup_command"),
+        "project_commands": list(profile.get("project_commands", [])),
+        "requires_specialized_skills": requires_specialized_skills,
         "skills": skills,
         "add_ons": add_ons,
-        "reason": _reason_for_app_builder(scaffold_type, score),
-        "source_documents": selected["source_documents"],
-        "architecture_notes": selected["architecture_notes"],
-        "confidence_score": confidence,
+        "reason": reason.strip() or "Selection derived from catalog rules.",
+        "source_documents": list(profile.get("source_documents", [])),
+        "architecture_notes": list(profile.get("architecture_notes", [])),
+        "confidence_score": max(0.0, min(1.0, float(confidence))),
     }
 
 
-def _select_add_ons(text: str) -> list[dict[str, Any]]:
-    add_ons: list[dict[str, Any]] = []
-    for key, add_on in ADD_ON_CAPABILITIES.items():
-        if any(trigger in text for trigger in add_on["triggers"]):
-            add_ons.append({"capability": key, **add_on})
-    return add_ons
+def _format_add_on(capability: dict[str, Any], capability_id: str) -> dict[str, Any]:
+    return {
+        "capability": capability_id,
+        "label": capability.get("label", capability_id),
+        "commands": list(capability.get("commands", [])),
+        "skills": list(capability.get("skills", [])),
+        "source_documents": list(capability.get("source_documents", [])),
+        "architecture_notes": list(capability.get("architecture_notes", [])),
+    }
 
 
-def _reason_for_app_builder(scaffold_type: str, score: int) -> str:
-    if scaffold_type == "integration_kit":
-        return "The request mentions integration/runtime/event/API behavior that requires Commerce extensibility scaffolding."
-    if scaffold_type == "aem_boilerplate":
-        return "The request mentions AEM, Edge Delivery, or boilerplate frontend work."
-    if scaffold_type == "generic_app_builder":
-        return "The request asks for a generic App Builder project rather than Commerce extensibility scaffolding."
-    if scaffold_type == "sdk_admin_ui":
-        return "The request is limited to SDK/Admin UI work and does not require a special Commerce scaffold."
-    if score == 0:
-        return "App Builder was identified, but no stronger scaffold signal was found, so Starter Kit is the safest default."
-    return "The request matches App Builder starter-kit setup signals."
+def _default_reason(profile_id: str, score: int) -> str:
+    if profile_id == "integration_kit":
+        return "The request mentions integration/runtime/event/API behavior requiring Commerce extensibility scaffolding."
+    if profile_id == "aem_boilerplate":
+        return "The request mentions AEM, Edge Delivery, or boilerplate frontend requirements."
+    if profile_id == "generic_app_builder":
+        return "The request asks for a generic App Builder project instead of Commerce extensibility scaffolding."
+    if profile_id == "sdk_admin_ui":
+        return "The request is focused on SDK/Admin UI and does not require a special scaffold."
+    if profile_id == "adobe_commerce_module":
+        return "The classifier identified Adobe Commerce without App Builder scaffold requirements."
+    if profile_id == "generic_project":
+        return "No supported platform-specific signals were found; generic profile selected."
+    if score <= 0:
+        return "No stronger profile signal found, defaulting to the platform default profile."
+    return "The request matches profile trigger signals in the platform catalog."
