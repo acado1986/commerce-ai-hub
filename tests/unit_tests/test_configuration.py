@@ -7,11 +7,12 @@ from agent.llm import (
     deployment_for_draft,
     deployment_for_revision,
 )
-from agent.orchestrator.router import mapped_request_type
 from agent.orchestrator.router import (
+    mapped_request_type,
     route_after_architecture,
     route_after_documentation,
     route_after_planning,
+    route_after_platform_selection,
     route_after_qa,
     route_after_requirements,
 )
@@ -46,6 +47,7 @@ def test_model_deployment_routing(monkeypatch) -> None:
 def test_generation_stage_routes_to_approval_on_human_review() -> None:
     state = {"next_action": "human_review"}
 
+    assert route_after_platform_selection(state) == "approval"
     assert route_after_requirements(state) == "approval"
     assert route_after_architecture(state) == "approval"
     assert route_after_planning(state) == "approval"

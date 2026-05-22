@@ -14,6 +14,7 @@ from agent.nodes.classify import classify_node
 from agent.nodes.documentation import documentation_node
 from agent.nodes.intake import intake_node
 from agent.nodes.planning import planning_node
+from agent.nodes.platform_selection import platform_selection_node
 from agent.nodes.qa import qa_node
 from agent.nodes.requirements import requirements_node
 from agent.observability import traced_graph
@@ -24,6 +25,7 @@ from agent.orchestrator.router import (
     route_after_classification,
     route_after_documentation,
     route_after_planning,
+    route_after_platform_selection,
     route_after_qa,
     route_after_requirements,
 )
@@ -41,6 +43,7 @@ def build_workflow_builder(
     builder = StateGraph(DeliveryHubState)
     builder.add_node("intake", intake_node)
     builder.add_node("classify", classify_node)
+    builder.add_node("platform_selection", platform_selection_node)
     builder.add_node("requirements", requirements_node)
     builder.add_node("architecture", architecture_node)
     builder.add_node("planning", planning_node)
@@ -63,6 +66,11 @@ def build_workflow_builder(
     builder.add_conditional_edges(
         "classify",
         route_after_classification,
+        {"platform_selection": "platform_selection", "approval": "approval"},
+    )
+    builder.add_conditional_edges(
+        "platform_selection",
+        route_after_platform_selection,
         {"requirements": "requirements", "approval": "approval"},
     )
     builder.add_conditional_edges(
@@ -97,6 +105,7 @@ def build_workflow_builder(
         after_approval_route,
         {
             "requirements": "requirements",
+            "platform_selection": "platform_selection",
             "architecture": "architecture",
             "planning": "planning",
             "qa": "qa",

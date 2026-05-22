@@ -40,6 +40,7 @@ class WorkflowChatState(MessagesState, total=False):
     next_action: str
     classification_rationale: str
     mapped_request_type: str
+    solution_profile: dict[str, Any]
     approval_stage: str | None
     revision_stage: str | None
     revision_instruction: str | None
@@ -204,7 +205,9 @@ workflow_builder = build_workflow_builder(
     entry_route=_workflow_entry_route,
     after_approval_route=_route_after_chat_approval,
 )
-workflow_graph = workflow_builder.compile(name="AI Delivery Hub Workflow (Chat Subgraph)")
+workflow_graph = workflow_builder.compile(
+    name="AI Delivery Hub Workflow (Chat Subgraph)"
+)
 
 
 def prepare_turn_node(state: WorkflowChatState) -> WorkflowChatState:

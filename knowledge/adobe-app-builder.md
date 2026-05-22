@@ -11,3 +11,7 @@ Use Adobe official docs as source of truth:
 
 Operational topics to include in architecture/planning:
 - retries, timeouts, idempotency, error handling, and runtime limits.
+- Commerce extensibility AI/coding-tools setup: `aio commerce extensibility app-setup`.
+- Commerce extensibility AI tools refresh/manual setup inside a starter-kit project: `aio commerce extensibility tools-setup`.
+- Generic App Builder project setup commands to consider when Commerce extensibility scaffolding is not required: `aio app init`, `aio app dev`, `aio app deploy`.
+- API Mesh is an add-on capability for GraphQL source composition; include relevant `aio api-mesh:*` commands when selected.

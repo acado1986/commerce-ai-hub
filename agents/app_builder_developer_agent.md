@@ -16,13 +16,15 @@ Produce Adobe App Builder implementation guidance for integrations and runtime s
 - `integration-risk-notes.md`
 
 ## SOP
-1. Define Runtime action boundaries and responsibilities.
-2. Define event/webhook and API Mesh integration flow.
-3. Specify retries, timeouts, and error handling.
-4. Define secrets, logging, and observability requirements.
-5. Document deployment/runtime constraints and trade-offs.
+1. Confirm the selected scaffold/setup profile before implementation.
+2. Define Runtime action boundaries and responsibilities.
+3. Define event/webhook and API Mesh integration flow when selected.
+4. Specify retries, timeouts, and error handling.
+5. Define secrets, logging, and observability requirements.
+6. Document deployment/runtime constraints and trade-offs.
 
 ## Validation
 - Are runtime actions and integrations aligned to requirements?
+- Is the selected scaffold/setup command followed exactly?
 - Are reliability controls explicit (timeouts, retries, failure handling)?
 - Are security and observability controls documented (secrets, logs, tracing)?

@@ -8,7 +8,9 @@ from agent.orchestrator.state import DeliveryHubState
 
 
 def audit_node(state: DeliveryHubState) -> DeliveryHubState:
-    audit_log = append_audit_event(state, "audit", "completed", {"artifact": "audit.json"})
+    audit_log = append_audit_event(
+        state, "audit", "completed", {"artifact": "audit.json"}
+    )
     llm_usage = state.get("llm_usage", [])
     llm_usage_totals = summarize_llm_usage(llm_usage)
     payload = {
@@ -16,6 +18,7 @@ def audit_node(state: DeliveryHubState) -> DeliveryHubState:
         "request_type": state.get("request_type"),
         "mapped_request_type": state.get("mapped_request_type"),
         "platforms": state.get("platforms", []),
+        "solution_profile": state.get("solution_profile", {}),
         "confidence_score": state.get("confidence_score"),
         "risk_level": state.get("risk_level"),
         "approval_status": state.get("approval_status", "pending"),

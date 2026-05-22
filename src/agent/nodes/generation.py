@@ -91,6 +91,7 @@ def generate_markdown(
             f"Request type: {state.get('request_type')}\n"
             f"Mapped workflow: {state.get('mapped_request_type')}\n"
             f"Platforms: {state.get('platforms', [])}\n"
+            f"Solution profile: {state.get('solution_profile', {})}\n"
             f"Input:\n{state.get('input_text', '')}\n\n"
             f"Prior artifact handoff context:\n{handoff_context or '<none>'}\n\n"
             f"Instruction:\n{instruction}{revision_note}\n"
@@ -118,7 +119,9 @@ def generate_markdown(
             "approval_status": "blocked",
             "next_action": "human_review",
             "errors": errors,
-            "audit_log": append_audit_event(state, stage, "failed", {"error": str(exc)}),
+            "audit_log": append_audit_event(
+                state, stage, "failed", {"error": str(exc)}
+            ),
         }
 
     artifacts.update(write_text_artifact(state, artifact_name, content))

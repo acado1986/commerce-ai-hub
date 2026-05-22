@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-
 RequestType = Literal[
     "implementation",
     "architecture",
@@ -41,6 +40,7 @@ class DeliveryHubState(TypedDict, total=False):
     next_action: str
     classification_rationale: str
     mapped_request_type: str
+    solution_profile: dict[str, Any]
     approval_stage: str | None
     revision_stage: str | None
     revision_instruction: str | None

@@ -22,6 +22,14 @@ def mapped_request_type(state: DeliveryHubState) -> str:
 
 
 def route_after_classification(state: DeliveryHubState) -> str:
+    return (
+        "approval"
+        if state.get("next_action") == "human_review"
+        else "platform_selection"
+    )
+
+
+def route_after_platform_selection(state: DeliveryHubState) -> str:
     return "approval" if state.get("next_action") == "human_review" else "requirements"
 
 
@@ -55,6 +63,8 @@ def route_after_approval(state: DeliveryHubState) -> str:
     if stage == "audit":
         return "end"
     if stage == "classify":
+        return "platform_selection"
+    if stage == "platform_selection":
         return "requirements"
     if stage == "requirements":
         return "architecture"

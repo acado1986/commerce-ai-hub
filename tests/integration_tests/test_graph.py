@@ -9,7 +9,9 @@ pytestmark = pytest.mark.anyio
 
 
 class _DummyResponse:
-    def __init__(self, content: str, prompt_tokens: int = 10, completion_tokens: int = 5) -> None:
+    def __init__(
+        self, content: str, prompt_tokens: int = 10, completion_tokens: int = 5
+    ) -> None:
         self.content = content
         self.response_metadata = {
             "model_name": "dummy-model",
@@ -50,8 +52,12 @@ async def test_delivery_hub_run_creates_required_artifacts(monkeypatch) -> None:
         "agent.nodes.generation.deployment_for_artifact",
         lambda artifact_name, risk_level=None: f"{artifact_name}-model",
     )
-    monkeypatch.setattr("agent.nodes.classify.get_model", lambda **kwargs: _DummyModel())
-    monkeypatch.setattr("agent.nodes.generation.get_model", lambda **kwargs: _DummyModel())
+    monkeypatch.setattr(
+        "agent.nodes.classify.get_model", lambda **kwargs: _DummyModel()
+    )
+    monkeypatch.setattr(
+        "agent.nodes.generation.get_model", lambda **kwargs: _DummyModel()
+    )
     config = {"configurable": {"thread_id": "test-thread"}}
     await graph.ainvoke(
         {
@@ -66,21 +72,15 @@ async def test_delivery_hub_run_creates_required_artifacts(monkeypatch) -> None:
         "input.md",
         "intake.json",
         "classification.json",
+        "platform-selection.json",
         "requirements.md",
-        "architecture.md",
-        "implementation-plan.md",
-        "qa-plan.md",
-        "review-checklist.md",
-        "ticket-comment.md",
-        "audit.json",
     }
     assert expected.issubset({p.name for p in latest.iterdir()})
-    audit = json.loads((latest / "audit.json").read_text(encoding="utf-8"))
-    assert len(audit["llm_usage"]) == 7
-    assert audit["llm_usage_totals"] == {
-        "input_tokens": 70,
-        "output_tokens": 35,
-        "total_tokens": 105,
-    }
-    assert audit["llm_usage"][0]["stage"] == "classify"
-    assert audit["llm_usage"][0]["model"] == "dummy-model"
+    platform_selection = json.loads(
+        (latest / "platform-selection.json").read_text(encoding="utf-8")
+    )
+    assert platform_selection["solution_profile"]["platform"] == "adobe_commerce"
+    assert (
+        platform_selection["solution_profile"]["scaffold_type"]
+        == "adobe_commerce_module"
+    )

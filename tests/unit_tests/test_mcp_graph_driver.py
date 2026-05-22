@@ -38,7 +38,9 @@ def test_mcp_plan_and_continue_drive_checkpointed_graph(monkeypatch, tmp_path) -
         "agent.nodes.classify.deployment_for_classification",
         lambda: "classification-model",
     )
-    monkeypatch.setattr("agent.nodes.classify.get_model", lambda **kwargs: _DummyModel())
+    monkeypatch.setattr(
+        "agent.nodes.classify.get_model", lambda **kwargs: _DummyModel()
+    )
 
     planned = json.loads(
         plan_delivery(
@@ -54,6 +56,12 @@ def test_mcp_plan_and_continue_drive_checkpointed_graph(monkeypatch, tmp_path) -
         continue_delivery(planned["run_id"], action="continue", timeout=30)
     )
     assert continued["completed_stage"] == "classify"
+    assert continued["next_stage"] == "platform_selection"
+
+    continued = json.loads(
+        continue_delivery(planned["run_id"], action="continue", timeout=30)
+    )
+    assert continued["completed_stage"] == "platform_selection"
     assert continued["next_stage"] == "requirements"
     assert PENDING_RUNS[planned["run_id"]]["mode"] == "graph"
 
