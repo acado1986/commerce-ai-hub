@@ -24,6 +24,18 @@ from agent.orchestrator.graph import cli_graph
 DEFAULT_TIMEOUT_SECONDS = 90
 
 
+def _resolve_request_text(args: argparse.Namespace) -> str:
+    if args.input:
+        return Path(args.input).read_text(encoding="utf-8")
+    if args.paste:
+        print("Paste your request. Finish with Ctrl+D.", flush=True)
+        return sys.stdin.read()
+    raw = input("Request (or @path/to/file.md): ")
+    if raw.startswith("@"):
+        return Path(raw[1:].strip()).read_text(encoding="utf-8")
+    return raw
+
+
 def compact_result(result: dict[str, Any]) -> str:
     lines = [
         f"run_id: {result.get('run_id')}",
@@ -77,26 +89,29 @@ async def ask_approval(
     payload = interrupts[0].value if interrupts else {}
     print_approval_payload(payload)
     if approve_all:
-        print("Auto-approving all generated artifacts.", flush=True)
+        print("Auto-approving current stage at each approval gate.", flush=True)
         return {
             "approved": True,
-            "reviewer_note": "Approved all generated artifacts via --approve-all.",
+            "reviewer_note": "Approved current stage via --approve-all.",
         }
     modified_files: list[str] = []
     while True:
-        answer = input("Choose: [a]pprove all, [m]odify files, [r]eject: ").strip().lower()
+        answer = input("Choose: [a]pprove, [m]odify files, [r]eject: ").strip().lower()
         if answer in {"a", "approve", "y", "yes"}:
             return {
                 "approved": True,
                 "reviewer_note": input("Reviewer note (optional): ").strip(),
                 "modified_files": modified_files,
             }
-        if answer in {"r", "reject", "n", "no", ""}:
+        if answer in {"r", "reject", "n", "no"}:
             return {
                 "approved": False,
                 "reviewer_note": input("Reviewer note (optional): ").strip(),
                 "modified_files": modified_files,
             }
+        if not answer:
+            print("Please choose a, m, or r.")
+            continue
         if answer in {"m", "modify"}:
             instruction = input("What should be changed in the generated files? ").strip()
             if not instruction:
@@ -121,7 +136,7 @@ async def run_cli() -> None:
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Prompt for one request line in the terminal",
+        help="Prompt in terminal; supports @path/to/file.md",
     )
     parser.add_argument(
         "--paste",
@@ -142,7 +157,7 @@ async def run_cli() -> None:
     parser.add_argument(
         "--approve-all",
         action="store_true",
-        help="Automatically approve all generated artifacts at the approval gate",
+        help="Automatically approve each current stage at approval gates",
     )
     args = parser.parse_args()
     if args.check_config:
@@ -151,13 +166,7 @@ async def run_cli() -> None:
         for name, value in langfuse_config_summary().items():
             print(f"{name}={value}")
         return
-    if args.input:
-        text = Path(args.input).read_text(encoding="utf-8")
-    elif args.paste:
-        print("Paste your request. Finish with Ctrl+D.", flush=True)
-        text = sys.stdin.read()
-    else:
-        text = input("Request: ")
+    text = _resolve_request_text(args)
     if not text.strip():
         raise SystemExit("No request text provided.")
     print("Running delivery hub graph...", flush=True)
@@ -176,6 +185,7 @@ async def run_cli() -> None:
                         "run_id": run_id,
                         "input_text": text,
                         "source_type": "manual_prompt",
+                        "timeout": args.timeout,
                     },
                     config=config,
                     stream_mode="updates",
@@ -183,8 +193,10 @@ async def run_cli() -> None:
             ),
             timeout=args.timeout,
         )
-        decision = await ask_approval(result, args.approve_all, args.timeout)
-        if decision is not None:
+        while True:
+            decision = await ask_approval(result, args.approve_all, args.timeout)
+            if decision is None:
+                break
             print("Resuming graph with approval decision...", flush=True)
             result = await asyncio.wait_for(
                 print_progress(

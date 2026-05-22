@@ -30,6 +30,15 @@ DEFAULT_AGENT_BY_ARTIFACT = {
 }
 
 
+def _state_timeout(state: DeliveryHubState, default: int = 60) -> int:
+    raw_timeout = state.get("timeout", default)
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        return default
+    return timeout if timeout > 0 else default
+
+
 def _artifact_context(state: DeliveryHubState, names: list[str]) -> str:
     blocks: list[str] = []
     artifact_paths = state.get("artifact_paths", {})
@@ -58,7 +67,7 @@ def generate_markdown(
     try:
         deployment = deployment_for_artifact(artifact_name, state.get("risk_level"))
         model_name = model_name_for_deployment(deployment)
-        model = get_model(deployment=deployment)
+        model = get_model(timeout=_state_timeout(state), deployment=deployment)
         profile_name = agent_profile or DEFAULT_AGENT_BY_ARTIFACT.get(artifact_name)
         artifact_agent = build_artifact_agent(profile_name) if profile_name else None
         handoff_context = _artifact_context(state, context_artifacts or [])
@@ -105,6 +114,7 @@ def generate_markdown(
         return {
             **state,
             "current_stage": stage,
+            "approval_stage": stage,
             "approval_status": "blocked",
             "next_action": "human_review",
             "errors": errors,

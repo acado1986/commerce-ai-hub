@@ -45,6 +45,26 @@ AZURE_OPENAI_DRAFT_DEPLOYMENT=gpt-5-mini
 
 Any missing stage-specific value falls back to `AZURE_OPENAI_DEPLOYMENT`.
 
+Optional durable checkpoints with local Postgres (Docker):
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d
+```
+
+Set one of these in `.env`:
+
+```text
+LANGGRAPH_CHECKPOINTER_POSTGRES_URI=postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+# or
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+```
+
+The workflow auto-creates required checkpoint tables on first run. Stop Postgres with:
+
+```bash
+docker compose -f docker-compose.postgres.yml down
+```
+
 Optional Langfuse tracing for local runs:
 
 ```text
@@ -111,13 +131,21 @@ Installed console script equivalent:
 uv run delivery-hub-cli --interactive --timeout 180
 ```
 
+Interactive mode can load Markdown/text files directly by prefixing the path with `@`:
+
+```bash
+uv run delivery-hub-cli --interactive --timeout 180
+# then enter:
+@examples/sample_ticket.md
+```
+
 At the approval gate, the CLI prints generated artifact paths and asks:
 
 ```text
-Choose: [a]pprove all, [m]odify files, [r]eject:
+Choose: [a]pprove, [m]odify files, [r]eject:
 ```
 
-Choose `a` to approve all generated artifacts, `m` to describe changes that should be applied to the generated markdown files, or `r` to reject.
+Choose `a` to approve the current stage and continue, `m` to describe changes that should be applied to generated artifacts, or `r` to reject.
 
 Approve every generated artifact automatically:
 
@@ -181,64 +209,39 @@ or reject with:
 {"approved": false, "reviewer_note": "Needs more detail"}
 ```
 
-## MCP Server
+## MCP Endpoint (LangGraph Server)
 
-Run the delivery hub as a local MCP stdio server:
+This project exposes MCP through LangGraph Server `/mcp` using Streamable HTTP.
+Run the server locally:
 
 ```bash
-uv run delivery-hub-mcp
+uv run langgraph dev
 ```
 
-Available MCP tools:
-
-- `draft_delivery`: creates a fast one-call delivery brief without running the full graph.
-- `plan_delivery`: starts an interactive delivery run and returns a `run_id`.
-- `continue_delivery`: advances one stage, revises artifacts, approves, or rejects.
-- `review_delivery`: reviews artifact paths, classification, audit, approval, and modification status.
-- `revise_delivery`: revises generated delivery artifacts using reviewer instructions.
-- `approve_delivery`: approves or rejects a pending delivery run.
-
-Available MCP prompt:
-
-- `run_delivery_workflow`: instructs the chat agent to run the full workflow by chaining short MCP calls in one chat turn.
-
-Example professional flow:
-
-1. Use `draft_delivery` for a fast brief when the MCP client has a short timeout.
-2. Use `plan_delivery` when you need persisted artifacts and approval gates.
-3. Use `continue_delivery` with action `continue` to run one stage at a time.
-4. Use `continue_delivery` with action `revise` if artifacts need changes.
-5. Use `continue_delivery` with action `approve` or `reject` when the output is acceptable.
-
-Interactive MCP example:
+Local MCP endpoint:
 
 ```text
-Use the run_delivery_workflow prompt for this request:
-Plan Adobe Commerce observer logic that adds a GUID to sales_order when an order is placed.
+http://localhost:2024/mcp
 ```
 
-If your client does not expose MCP prompts, use this plain chat instruction:
+The `delivery_mcp` graph is exposed as an MCP tool with explicit schema fields:
 
-```text
-Run the AI Delivery Hub workflow for this request in one chat. Use plan_delivery first, then call continue_delivery with action "continue" repeatedly until status is awaiting_approval. Do not ask me between stages unless a stage fails. When awaiting approval, summarize artifact paths and ask me to approve, revise, or reject.
+- `action`: `plan | continue | review | revise | approve`
+- `input_text`: required for `action=plan`
+- `run_id`: required for `continue`, `review`, `revise`, `approve`
+- `continue_action`: `continue | revise | approve | reject` for `action=continue`
+- `instruction`: optional for continue, required for revise
+- `approved`, `reviewer_note`: for `action=approve`
+- `timeout`: per-call timeout in seconds
 
-Request:
-Plan Adobe Commerce observer logic that adds a GUID to sales_order when an order is placed.
-```
+Recommended flow through MCP:
 
-Example MCP client configuration:
+1. Call tool with `action=plan` and request `input_text`.
+2. Repeatedly call tool with `action=continue`, `continue_action=continue`.
+3. When status is `awaiting_approval`, call with `action=approve` or `action=continue` + `continue_action=revise/reject`.
+4. Call with `action=review` at any point to inspect run state and artifact paths.
 
-```json
-{
-  "mcpServers": {
-    "ai-delivery-hub": {
-      "command": "uv",
-      "args": ["run", "delivery-hub-mcp"],
-      "cwd": "/home/bogdan/Projects/commerce-ai-hub/app"
-    }
-  }
-}
-```
+Legacy stdio MCP server (`uv run delivery-hub-mcp`) is still available for compatibility, but `/mcp` on LangGraph Server is the primary MCP interface.
 
 ## Tests
 

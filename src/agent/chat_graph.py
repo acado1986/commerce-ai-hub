@@ -181,13 +181,22 @@ def _parse_approval_command(text: str) -> tuple[str, str]:
 
 
 def _workflow_entry_route(state: DeliveryHubState) -> str:
-    return "approval" if state.get("next_action") == "awaiting_approval" else "intake"
+    return "approval" if _is_approval_turn(state) else "intake"
 
 
 def _route_after_chat_approval(state: DeliveryHubState) -> str:
     if state.get("next_action") == "awaiting_approval":
         return "end"
     return route_after_approval(state)
+
+
+def _is_approval_turn(state: WorkflowChatState) -> bool:
+    next_action = str(state.get("next_action", "")).strip()
+    if next_action in {"awaiting_approval", "human_review"}:
+        return True
+    if state.get("approval_status") == "pending":
+        return True
+    return bool(state.get("approval_request"))
 
 
 workflow_builder = build_workflow_builder(
@@ -200,7 +209,7 @@ workflow_graph = workflow_builder.compile(name="AI Delivery Hub Workflow (Chat S
 
 def prepare_turn_node(state: WorkflowChatState) -> WorkflowChatState:
     text = _last_user_text(state)
-    if state.get("next_action") == "awaiting_approval":
+    if _is_approval_turn(state):
         action, instruction = _parse_approval_command(text)
         if action == "invalid":
             return {
@@ -225,7 +234,7 @@ def prepare_turn_node(state: WorkflowChatState) -> WorkflowChatState:
     return {
         "chat_reply": "",
         "approval_decision": None,
-        "run_id": state.get("run_id") or str(uuid.uuid4()),
+        "run_id": state.get("run_id") or f"chat-{uuid.uuid4()}",
         "source_type": "studio_chat",
         "source_id": None,
         "input_text": text,
@@ -239,7 +248,7 @@ def _route_after_prepare(state: WorkflowChatState) -> str:
 def respond_node(state: WorkflowChatState) -> WorkflowChatState:
     reply = state.get("chat_reply")
     if not reply:
-        if state.get("next_action") == "awaiting_approval":
+        if _is_approval_turn(state):
             reply = _format_interrupt(state.get("approval_request"))
         else:
             reply = _format_completion(state)

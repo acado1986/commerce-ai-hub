@@ -34,13 +34,23 @@ PLATFORMS = {"adobe_commerce", "app_builder", "generic"}
 RISK = {"low", "medium", "high"}
 
 
+def _state_timeout(state: DeliveryHubState, default: int = 60) -> int:
+    raw_timeout = state.get("timeout", default)
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        return default
+    return timeout if timeout > 0 else default
+
+
 def _classify_payload(
     text: str,
+    timeout: int,
     config: RunnableConfig | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     deployment = deployment_for_classification()
     model_name = model_name_for_deployment(deployment)
-    model = get_model(deployment=deployment)
+    model = get_model(timeout=timeout, deployment=deployment)
     print("[llm] classify request", flush=True)
     prompt = (
         "Classify the request. Return strict JSON only with keys: "
@@ -64,8 +74,9 @@ def classify_node(
 ) -> DeliveryHubState:
     errors = list(state.get("errors", []))
     artifacts = dict(state.get("artifact_paths", {}))
+    timeout = _state_timeout(state)
     try:
-        payload, usage = _classify_payload(state.get("input_text", ""), config)
+        payload, usage = _classify_payload(state.get("input_text", ""), timeout, config)
     except Exception as exc:  # noqa: BLE001
         errors.append({"stage": "classify", "error": str(exc)})
         return {

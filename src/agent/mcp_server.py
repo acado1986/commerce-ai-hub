@@ -208,10 +208,10 @@ def draft_delivery(input_text: str, timeout: int = 90) -> str:
 def plan_delivery(
     input_text: str,
     source_type: str = "mcp",
-    timeout: int = 180,
+    timeout: int = 900,
 ) -> str:
     """Start a checkpointed LangGraph delivery run and pause after intake."""
-    run_id = str(uuid.uuid4())
+    run_id = f"mcp-{uuid.uuid4()}"
     thread_id = f"mcp-{run_id}"
     PENDING_RUNS[run_id] = {
         "mode": "graph",
@@ -227,6 +227,7 @@ def plan_delivery(
                 "run_id": run_id,
                 "input_text": input_text,
                 "source_type": source_type,
+                "timeout": timeout,
                 "errors": [],
                 "audit_log": [],
                 "artifact_paths": {},
@@ -268,7 +269,7 @@ def continue_delivery(
     run_id: str,
     action: str = "continue",
     instruction: str = "",
-    timeout: int = 120,
+    timeout: int = 900,
 ) -> str:
     """Advance the checkpointed LangGraph workflow or revise/approve/reject."""
     run = PENDING_RUNS.get(run_id)
@@ -352,7 +353,7 @@ def continue_delivery(
     try:
         result = _invoke_graph_step(
             run_id,
-            None,
+            {"timeout": timeout},
             None if stage == "approval" else [stage],
             timeout,
         )
@@ -416,7 +417,7 @@ def review_delivery(run_id: str) -> str:
 def revise_delivery(
     run_id: str,
     instruction: str,
-    timeout: int = 120,
+    timeout: int = 900,
 ) -> str:
     """Revise generated delivery artifacts using reviewer instructions."""
     from agent.artifact_review import revise_artifacts
@@ -437,7 +438,7 @@ def approve_delivery(
     run_id: str,
     approved: bool = True,
     reviewer_note: str = "",
-    timeout: int = 60,
+    timeout: int = 900,
 ) -> str:
     """Approve or reject a pending delivery run created by this MCP server."""
     run = PENDING_RUNS.get(run_id)

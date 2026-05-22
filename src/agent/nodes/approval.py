@@ -59,6 +59,7 @@ def apply_approval_decision(
         return {
             **state,
             "current_stage": "approval",
+            "approval_stage": approval_stage,
             "approval_status": "pending",
             "next_action": "revise",
             "revision_stage": approval_stage,
@@ -92,6 +93,7 @@ def apply_approval_decision(
     return {
         **state,
         "current_stage": "approval",
+        "approval_stage": approval_stage,
         "approval_status": status,
         "next_action": "approved" if approved else "rejected",
         "artifact_paths": artifact_paths,

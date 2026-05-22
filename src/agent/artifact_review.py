@@ -16,6 +16,8 @@ from agent.llm import (
 from agent.observability import langchain_trace_config
 
 MODIFIABLE_ARTIFACTS = {
+    "classification.json",
+    "intake.json",
     "requirements.md",
     "architecture.md",
     "implementation-plan.md",
@@ -43,13 +45,22 @@ def revise_artifacts(
         if not path.exists():
             continue
         current = path.read_text(encoding="utf-8")
-        prompt = (
-            "Revise this delivery artifact according to the reviewer instruction. "
-            "Preserve useful detail and return markdown only.\n\n"
-            f"Artifact: {name}\n"
-            f"Reviewer instruction:\n{instruction}\n\n"
-            f"Current artifact:\n{current}"
-        )
+        if name.endswith(".json"):
+            prompt = (
+                "Revise this JSON artifact according to the reviewer instruction. "
+                "Return valid JSON only (no markdown fences, no commentary).\n\n"
+                f"Artifact: {name}\n"
+                f"Reviewer instruction:\n{instruction}\n\n"
+                f"Current artifact JSON:\n{current}"
+            )
+        else:
+            prompt = (
+                "Revise this delivery artifact according to the reviewer instruction. "
+                "Preserve useful detail and return markdown only.\n\n"
+                f"Artifact: {name}\n"
+                f"Reviewer instruction:\n{instruction}\n\n"
+                f"Current artifact:\n{current}"
+            )
         response = invoke_model(
             model,
             prompt,
@@ -63,7 +74,17 @@ def revise_artifacts(
             ),
         )
         content = response_content(response)
-        path.write_text(content, encoding="utf-8")
+        if name.endswith(".json"):
+            try:
+                parsed = json.loads(content)
+            except json.JSONDecodeError:
+                continue
+            path.write_text(
+                json.dumps(parsed, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        else:
+            path.write_text(content, encoding="utf-8")
         usage_entries.append(
             {
                 "stage": "revision",

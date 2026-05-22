@@ -26,6 +26,7 @@ class DeliveryHubState(TypedDict, total=False):
     source_type: str
     source_id: str | None
     input_text: str
+    timeout: int
     request_type: RequestType
     platforms: list[PlatformType]
     confidence_score: float
