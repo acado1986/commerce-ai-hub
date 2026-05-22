@@ -4,39 +4,19 @@ LangGraph MVP for human-initiated delivery planning. The graph classifies pasted
 
 ## Install
 
-Prerequisites:
+Use the full setup guide:
 
-- Python `>=3.10`
-- `uv` installed (`https://docs.astral.sh/uv/`)
+- See [INSTALLATION.md](INSTALLATION.md)
 
-Install dependencies:
+Quick path:
 
 ```bash
 uv sync
-```
-
-Create local env file:
-
-```bash
 cp .env.example .env
+uv run delivery-hub-cli --check-config
 ```
 
-Set required Azure OpenAI values in `.env`:
-
-```text
-AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT=your-chat-model-deployment
-AZURE_OPENAI_API_KEY=your_azure_openai_key
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-```
-
-Optional but recommended:
-
-- Set `AZURE_OPENAI_MODEL_NAME` for trace/cost attribution.
-- Enable Langfuse only when keys are configured (`LANGFUSE_ENABLED=true`).
-- Start Postgres checkpointer for durable MCP/retry behavior.
-
-## Setup
+## Configuration
 
 If your organization exposes Azure OpenAI through an OpenAI-compatible API Management endpoint ending in `/openai/v1`, use that endpoint and put the model/deployment name in `AZURE_OPENAI_DEPLOYMENT`.
 `AZURE_OPENAI_MODEL_NAME` is optional, but useful for Langfuse cost attribution when an Azure deployment name is not the canonical model name.
