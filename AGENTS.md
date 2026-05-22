@@ -172,7 +172,12 @@ Use this when onboarding a new platform/profile in the platform selection catalo
 2. Verify `platforms.<platform_id>.profile_ids` and `default_profile_id` are valid.
 3. Include profile metadata: triggers, setup commands, skills, source docs, architecture notes.
 4. If needed, add cross-platform capabilities under `capabilities`.
-5. Run selection tests and parity tests before merging.
+5. Add optional platform-specific profiles under `agents/platforms/<platform_id>/`.
+6. Add or update tests for classification, selection, and profile override behavior.
+7. Run selection tests and parity tests before merging.
+
+Classification reads allowed platform IDs from `config/platform_catalog.yaml`.
+Adding a platform should not require classifier, graph, or router code changes.
 
 Example command:
 

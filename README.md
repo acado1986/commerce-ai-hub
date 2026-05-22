@@ -246,6 +246,16 @@ uv run python scripts/add_platform_catalog_entry.py \
   --architecture-note "Define webhook, auth, and app-extension boundaries."
 ```
 
+Adding a platform should require:
+
+1. Add a catalog entry in `config/platform_catalog.yaml`.
+2. Add optional platform-specific profiles under `agents/platforms/<platform>/`.
+3. Add tests for classification, platform selection, and any profile overrides.
+
+The classifier reads allowed platform IDs from the platform catalog, so a new
+platform should not require changes to `src/agent/nodes/classify.py`, graph
+wiring, or router wiring.
+
 Dry-run without writing:
 
 ```bash
