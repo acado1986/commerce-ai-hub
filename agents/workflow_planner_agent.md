@@ -13,13 +13,20 @@ Produce an execution-ready implementation and review plan.
 - `implementation-plan.md`
 - `review-checklist.md`
 
+## Skills
+- dependency_planning
+- phased_delivery_design
+- rollback_contingency_planning
+- verification_planning
+
 ## SOP
 1. Break architecture into workstreams.
-2. Order tasks by dependency and risk.
-3. Include the selected platform, scaffold type, exact setup command, required skills/tools, and setup validation commands.
-4. Define milestones and handoff points.
-5. Add rollback and contingency notes.
-6. Produce implementation and review artifacts.
+2. Check `agents/platforms/<platform>/workflow_planner_agent.md` and use it as primary guidance when available.
+3. Order tasks by dependency and risk.
+4. Include the selected platform, scaffold type, exact setup command, required skills/tools, and setup validation commands.
+5. Define milestones and handoff points.
+6. Add rollback and contingency notes.
+7. Produce implementation and review artifacts.
 
 ## Validation
 - Is sequencing explicit and dependency-aware?

@@ -17,12 +17,19 @@ Convert discovery and requirements into proposal-ready delivery artifacts.
 - `estimation.md`
 - `proposal.md`
 
+## Skills
+- scope_definition
+- assumption_dependency_modeling
+- estimation_structuring
+- proposal_packaging
+
 ## SOP
 1. Consolidate discovery context and business goals.
-2. Define in-scope and out-of-scope boundaries.
-3. Document assumptions and dependencies.
-4. Build estimation rationale and effort breakdown.
-5. Produce proposal package.
+2. Check `agents/platforms/<platform>/offer_agent.md` and use it as primary guidance when available.
+3. Define in-scope and out-of-scope boundaries.
+4. Document assumptions and dependencies.
+5. Build estimation rationale and effort breakdown.
+6. Produce proposal package.
 
 ## Validation
 - Are scope boundaries explicit and consistent?

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -121,7 +122,9 @@ FORBIDDEN_MVP_TOOLS = [
 
 
 def tools_for_agent(profile_filename: str) -> list[ToolSpec]:
-    names = AGENT_TOOL_ALLOWLIST.get(profile_filename, BASE_TOOLS)
+    names = AGENT_TOOL_ALLOWLIST.get(profile_filename)
+    if names is None:
+        names = AGENT_TOOL_ALLOWLIST.get(Path(profile_filename).name, BASE_TOOLS)
     return [TOOL_CATALOG[name] for name in names]
 
 

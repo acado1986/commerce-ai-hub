@@ -5,6 +5,8 @@ from langchain_core.runnables import RunnableConfig
 from agent.nodes.generation import generate_markdown
 from agent.orchestrator.state import DeliveryHubState
 
+DEFAULT_ARCHITECT_PROFILE = "solution_architect_agent.md"
+
 
 def architecture_node(
     state: DeliveryHubState,
@@ -14,7 +16,7 @@ def architecture_node(
         state=state,
         stage="architecture",
         artifact_name="architecture.md",
-        agent_profile="solution_architect_agent.md",
+        agent_profile=DEFAULT_ARCHITECT_PROFILE,
         context_artifacts=["platform-selection.json", "requirements.md"],
         config=config,
         instruction=(

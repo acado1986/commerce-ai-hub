@@ -13,12 +13,19 @@ Convert intake and ticket context into structured, testable requirements.
 - `requirements.md`
 - `acceptance-criteria.md`
 
+## Skills
+- requirements_elicitation
+- acceptance_criteria_design
+- risk_identification
+- constraint_documentation
+
 ## SOP
 1. Identify business goals and expected outcomes.
-2. Capture functional and non-functional requirements.
-3. Document assumptions and constraints.
-4. Define measurable acceptance criteria.
-5. Record open risks and unresolved questions.
+2. Check `agents/platforms/<platform>/business_analyst_agent.md` and use it as primary guidance when available.
+3. Capture functional and non-functional requirements.
+4. Document assumptions and constraints.
+5. Define measurable acceptance criteria.
+6. Record open risks and unresolved questions.
 
 ## Validation
 - Are requirements testable and implementation-ready?

@@ -36,6 +36,8 @@ build-backend = "setuptools.build_meta"
 packages = [
     "langgraph.templates.agent",
     "agent",
+    "agent.chat_agent",
+    "agent.cli_agent",
     "agent.mcp",
     "agent.nodes",
     "agent.orchestrator",

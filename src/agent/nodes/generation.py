@@ -30,6 +30,23 @@ DEFAULT_AGENT_BY_ARTIFACT = {
 }
 
 
+def _platform_candidates(state: DeliveryHubState) -> list[str]:
+    candidates: list[str] = []
+    solution_profile = state.get("solution_profile", {})
+    if isinstance(solution_profile, dict):
+        platform = str(solution_profile.get("platform", "")).strip()
+        if platform:
+            candidates.append(platform)
+
+    platforms = state.get("platforms", [])
+    if isinstance(platforms, list):
+        for platform in platforms:
+            normalized = str(platform).strip()
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+    return candidates
+
+
 def _state_timeout(state: DeliveryHubState, default: int = 60) -> int:
     raw_timeout = state.get("timeout", default)
     try:
@@ -69,7 +86,14 @@ def generate_markdown(
         model_name = model_name_for_deployment(deployment)
         model = get_model(timeout=_state_timeout(state), deployment=deployment)
         profile_name = agent_profile or DEFAULT_AGENT_BY_ARTIFACT.get(artifact_name)
-        artifact_agent = build_artifact_agent(profile_name) if profile_name else None
+        artifact_agent = (
+            build_artifact_agent(
+                profile_name,
+                platform_candidates=_platform_candidates(state),
+            )
+            if profile_name
+            else None
+        )
         handoff_context = _artifact_context(state, context_artifacts or [])
         print(f"[llm] generate {artifact_name}", flush=True)
         revision_note = ""

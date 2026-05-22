@@ -178,6 +178,42 @@ Artifacts are written to:
 artifacts/runs/<run_id>/
 ```
 
+## Agent Profiles
+
+Role profiles are loaded from:
+
+```text
+agents/
+```
+
+Platform-specialized profiles can be added under:
+
+```text
+agents/platforms/<platform>/
+```
+
+Resolution behavior for generation stages:
+
+1. Start from the configured top-level profile (for example, `business_analyst_agent.md`).
+2. If `solution_profile.platform` (or classified `platforms`) is available, check `agents/platforms/<platform>/<profile_filename>`.
+3. If that specialized profile exists, use it as primary guidance.
+4. Otherwise, fall back to the top-level profile in `agents/`.
+
+Example:
+
+```text
+agents/business_analyst_agent.md
+agents/platforms/app_builder/business_analyst_agent.md
+agents/platforms/adobe_commerce/business_analyst_agent.md
+```
+
+Current convention:
+
+- Keep one canonical top-level profile per role in `agents/` (for example `solution_architect_agent.md`, `business_analyst_agent.md`, `developer_agent.md`).
+- Add `agents/platforms/<platform>/<same_profile_filename>` only when platform-specific behavior is materially different.
+- Avoid role duplication by platform at top-level. Example: prefer one `developer_agent.md` with optional platform overrides, instead of separate top-level `adobe_commerce_developer_agent.md` and `app_builder_developer_agent.md`.
+- Include these sections in each profile: `Mission`, `Inputs`, `Outputs`, `Skills`, `SOP`, `Validation`.
+
 ## Platform Catalog
 
 Platform/profile selection is config-driven from:

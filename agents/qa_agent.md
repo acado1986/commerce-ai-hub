@@ -15,12 +15,19 @@ Produce a complete QA strategy and acceptance validation plan.
 - `test-matrix.md`
 - `acceptance-validation.md`
 
+## Skills
+- test_strategy_design
+- coverage_mapping
+- regression_planning
+- quality_gate_definition
+
 ## SOP
 1. Define functional and non-functional test scope.
-2. Build test matrix mapped to requirements.
-3. Include negative paths and regression coverage.
-4. Define environment assumptions and dependencies.
-5. Define entry and exit criteria.
+2. Check `agents/platforms/<platform>/qa_agent.md` and use it as primary guidance when available.
+3. Build test matrix mapped to requirements.
+4. Include negative paths and regression coverage.
+5. Define environment assumptions and dependencies.
+6. Define entry and exit criteria.
 
 ## Validation
 - Is every requirement covered by at least one test scenario?
